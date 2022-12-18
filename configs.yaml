@@ -1,0 +1,348 @@
+defaults:
+  lr: 0.0008
+  graph_type: 'erdos-renyi'
+  sem_type: 'linear-gauss'
+  noise_sigma: 0.1
+  logdir: 'logs'
+  learn_P: False
+  obs_data: 500
+  min_interv_value: -5.
+  max_interv_value: 5.
+  eq_noise_var: False
+  log_stds_max: 10.0
+  posterior_samples: 64
+  hidden_size: 128
+  fixed_tau: 0.2
+  logit_constraint: 10
+  max_deviation: 0.01
+  bethe_iters: 20
+  L_KL: False
+  P_KL: False
+  n_interv_sets: 20
+  dataset: 'vector'
+  interv_value: 'uniform'
+  learn_noise: True
+  num_samples: 2500
+
+  # wandb
+  wandb_project: 'structure-learning'
+  wandb_entity: 'structurelearning'
+  offline_wandb: False
+  off_wandb: True
+
+
+# ! Exp 1. Learn L linear BIOLS
+linear_vector_obs_learn_L:
+  exp_name: 'BIOLS linear observational learn L'
+  interv_type: 'single'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  num_steps: 5000
+  learn_L: True
+  pts_per_interv: 0
+
+linear_vector_single_interv_learn_L:
+  exp_name: 'BIOLS linear single interventional learn L'
+  interv_type: 'single'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 5000
+  learn_L: True  
+
+linear_vector_multi_interv_learn_L:
+  exp_name: 'BIOLS linear multi interventional learn L'
+  interv_type: 'multi'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 1
+  obs_data: 500
+  n_interv_sets: 100
+  pts_per_interv: 100
+  num_steps: 3000
+  learn_L: True 
+  off_wandb: True
+  
+
+
+# ! Exp 2B. Batched Learn SCM linear BIOLS
+batched_linear_vector_obs_learn_SCM:
+  exp_name: 'BIOLS batched linear observational learn SCM'
+  interv_type: 'single'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  num_steps: 3000
+  obs_data: 500
+  pts_per_interv: 0
+  batches: 10000
+  learn_L: True    
+  learn_P: True
+
+batched_linear_vector_single_interv_learn_SCM:
+  exp_name: 'BIOLS batched linear single interventional learn SCM'
+  interv_type: 'single'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  num_steps: 3000
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  batches: 10000
+  learn_L: True    
+  learn_P: True
+
+batched_linear_vector_multi_interv_learn_SCM:
+  exp_name: 'BIOLS batched linear multi interventional learn SCM'
+  interv_type: 'multi'
+  proj: 'linear'
+  num_nodes: 10
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 19
+  num_steps: 3000
+  obs_data: 500
+  n_interv_sets: 100
+  pts_per_interv: 100
+  batches: 10000
+  learn_L: True
+  learn_P: True
+
+
+
+# ! Exp 3. Learn L nonlinear BIOLS
+nonlinear_vector_obs_learn_L:
+  exp_name: 'BIOLS nonlinear observational learn L'
+  interv_type: 'single'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  num_steps: 5000
+  learn_L: True
+  pts_per_interv: 0
+
+nonlinear_vector_single_interv_learn_L:
+  exp_name: 'BIOLS nonlinear single interventional learn L'
+  interv_type: 'single'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 5000
+  learn_L: True  
+
+nonlinear_vector_multi_interv_learn_L:
+  exp_name: 'BIOLS nonlinear multi interventional learn L'
+  interv_type: 'multi'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 1
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  learn_L: True 
+  L_KL: False
+
+
+# ! Exp 5. Learn L Conv. BIOLS
+biols_chem_data:
+  exp_name: 'BIOLS chemdata'
+  interv_type: 'multi'
+  dataset: 'chemdata'
+  num_nodes: 5
+  exp_edges: 1.0
+  data_seed: 3
+  noise_sigma: 1.5
+  obs_data: 500
+  generate: True
+  off_wandb: True
+  batches: 256
+  num_steps: 1000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  baseroot: '/home/mila/j/jithendaraa.subramanian'
+
+
+
+vae_linear_baseline:
+  exp_name: 'VAE Linear baseline'
+  interv_type: 'multi'
+  interv_value: 'uniform'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 2.0
+  proj_dims: 100
+  data_seed: 1
+  obs_data: 500
+  learn_L: True    
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 1000
+  corr: False
+
+vae_nonlinear_baseline:
+  exp_name: 'VAE noninear baseline'
+  interv_type: 'multi'
+  interv_value: 'uniform'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 1
+  obs_data: 500
+  learn_L: True    
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 1000
+  corr: False
+
+gin_baseline:
+  exp_name: 'GIN baseline'
+  interv_type: 'multi'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 2.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  eq_noise_var: False
+
+nonlinear_gin_baseline:
+  exp_name: 'Nonlinear GIN baseline'
+  interv_type: 'multi'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 6
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  eq_noise_var: False
+  proj: '3_layer_mlp'
+
+
+
+
+# ! Exp 2. Learn SCM linear BIOLS
+linear_vector_obs_learn_SCM:
+  exp_name: 'BIOLS linear observational learn SCM'
+  proj: 'linear' 
+  interv_type: 'multi'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  obs_data: 500
+  pts_per_interv: 0
+  num_steps: 10000
+  learn_L: True
+  learn_P: True
+
+linear_vector_single_interv_learn_SCM:
+  exp_name: 'BIOLS linear single interventional learn SCM'
+  proj: 'linear' 
+  interv_type: 'single'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  learn_L: True
+  learn_P: True
+
+linear_vector_multi_interv_learn_SCM:
+  exp_name: 'BIOLS linear multi interventional learn SCM'
+  proj: 'linear' 
+  interv_type: 'multi'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  learn_L: True
+  learn_P: True
+
+
+# ! Exp 4. Learn SCM nonlinear BIOLS batched
+batched_nonlinear_vector_obs_learn_SCM:
+  exp_name: 'BIOLS batched nonlinear observational learn SCM'
+  interv_type: 'single'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  num_steps: 3000
+  obs_data: 500
+  pts_per_interv: 0
+  batches: 10000
+  learn_L: True    
+  learn_P: True
+
+batched_nonlinear_vector_single_interv_learn_SCM:
+  exp_name: 'BIOLS batched nonlinear single interventional learn SCM'
+  interv_type: 'single'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  num_steps: 3000
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  batches: 10000
+  learn_L: True    
+  learn_P: True
+
+batched_nonlinear_vector_multi_interv_learn_SCM:
+  exp_name: 'BIOLS batched nonlinear multi interventional learn SCM'
+  interv_type: 'multi'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 2
+  num_steps: 3000
+  obs_data: 500
+  n_interv_sets: 200
+  pts_per_interv: 100
+  batches: 10000
+  learn_L: True
+  learn_P: True
+  L_KL: False
+  P_KL: False
