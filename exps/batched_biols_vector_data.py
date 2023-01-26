@@ -362,6 +362,7 @@ with tqdm(range(opt.num_steps)) as pbar:
                                             gt_W,
                                             gt_sigmas,
                                             gt_P,
+                                            gt_L,
                                             loss,
                                             log_dict,
                                             opt

@@ -13,7 +13,7 @@ from BIOLS_Interv import BIOLS_Interv
 from BIOLS_Image import BIOLS_Image
 
 def biols_interv_forward_fn(hard, rng_key, opt, X, interv_values, 
-                LΣ_params, P=None):
+                LΣ_params, P=None, L=None):
 
     model = BIOLS_Interv(opt.num_nodes, 
                     opt.posterior_samples, 
@@ -22,15 +22,17 @@ def biols_interv_forward_fn(hard, rng_key, opt, X, interv_values,
                     opt.hidden_size,
                     opt.max_deviation,
                     opt.learn_P,
+                    opt.learn_L,
                     opt.proj_dims, 
                     opt.proj,
                     opt.log_stds_max,
                     opt.logit_constraint,
-                    P=P)
+                    P=P,
+                    L=L)
 
     return model(rng_key, X, interv_values, LΣ_params, hard)
 
-def init_interv_model(key, hard, rng_key, opt, X, interv_values, l_dim, noise_dim, P=None):
+def init_interv_model(key, hard, rng_key, opt, X, interv_values, l_dim, noise_dim, P=None, L=None):
     """
         Initialize model, parameters, and optimizer states
     """
@@ -46,7 +48,7 @@ def init_interv_model(key, hard, rng_key, opt, X, interv_values, l_dim, noise_di
         raise NotImplementedError("Need to implement learn_noise False")
 
     next_key = next(key)
-    model_params = forward.init(next_key, hard, rng_key, opt, X, interv_values, LΣ_params, P)
+    model_params = forward.init(next_key, hard, rng_key, opt, X, interv_values, LΣ_params, P, L)
     model_opt_params = opt_model.init(model_params)
     LΣ_opt_params = opt_LΣ.init(LΣ_params)
 

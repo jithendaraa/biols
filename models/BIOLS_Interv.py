@@ -16,15 +16,15 @@ from modules.GumbelSinkhorn import GumbelSinkhorn
 
 class BIOLS_Interv(hk.Module):
     def __init__(self, d, posterior_samples, eq_noise_var, tau, hidden_size, 
-                max_deviation, learn_P, proj_dims, proj, log_stds_max=10.0, 
-                logit_constraint=10, P=None):
+                max_deviation, learn_P, learn_L, proj_dims, proj, log_stds_max=10.0, 
+                logit_constraint=10, P=None, L=None):
         """
             The BIOLS model to estimate SCM from vector data
         """
         super().__init__()
         self._set_vars(d, posterior_samples, eq_noise_var, tau,
-                        hidden_size, max_deviation, learn_P, 
-                        log_stds_max, logit_constraint, proj_dims, P)
+                        hidden_size, max_deviation, learn_P, learn_L,
+                        log_stds_max, logit_constraint, proj_dims, P, L)
         
         self.ds = GumbelSinkhorn(self.d, noise_type="gumbel", tol=max_deviation)
 
@@ -59,8 +59,9 @@ class BIOLS_Interv(hk.Module):
                 ])
 
     def _set_vars(self, d, posterior_samples, eq_noise_var, tau,
-                    hidden_size, max_deviation, learn_P, log_stds_max, 
-                    logit_constraint, proj_dims, P=None):
+                    hidden_size, max_deviation, learn_P, learn_L, 
+                    log_stds_max, logit_constraint, proj_dims, P=None, 
+                    L=None):
         """
             Sets important variables/attributes for this class.
         """
@@ -72,10 +73,12 @@ class BIOLS_Interv(hk.Module):
         self.hidden_size = hidden_size
         self.max_deviation = max_deviation
         self.learn_P = learn_P
+        self.learn_L = learn_L
         self.log_stds_max = log_stds_max
         self.logit_constraint = logit_constraint
         self.proj_dims = proj_dims
         self.P = P
+        self.L = L
         if eq_noise_var:    self.noise_dim = 1
         else:               self.noise_dim = d
 
@@ -246,9 +249,7 @@ class BIOLS_Interv(hk.Module):
                 Standard deviation of the noise variables.
                 Noise epsilon_i will be sampled from N(0, eps_std).
 
-            interv_targets: jnp.ndarray (max_intervs)
-                max_intervs refers to maximum number of nodes intervened on
-                in any one sample of the dataset, i.e, any X^{i}. 
+            interv_target: jnp.ndarray (d)
 
             interv_values: jnp.ndarray (d)
                 For every intervened node, or every interv_targets[j], 
@@ -319,22 +320,6 @@ class BIOLS_Interv(hk.Module):
         samples = vmap(self.eltwise_ancestral_sample, (None, None, None, 0, 0, 0), (0))(W, P, eps_std, rng_keys, interv_targets, interv_values)
         return samples
 
-    def gumbel_softmax(self, rng_key, logits, tau=1, hard=True):
-        gumbels = jnp.log(Exponential(rate=1).sample(seed=rng_key))
-        gumbels = (logits + gumbels) / tau
-        y_soft = softmax(gumbels)
-
-        if hard:
-            # Straight through.
-            index = jnp.argmax(y_soft)
-            y_hard = jnp.zeros_like(logits)
-            y_hard = lax.scatter(y_hard, index, 1.0, )
-            lax.scatter
-            ret = y_hard + y_soft - lax.stop_gradient(y_soft)
-
-        softmax(gumbels)
-        print(gumbels)
-
     def __call__(self, rng_key, X, interv_values, LΣ_params, hard):
         """
             Forward pass of BIOLS:
@@ -401,16 +386,17 @@ class BIOLS_Interv(hk.Module):
                     Σ_i as diag(exp(2 * log sigma_i)) 
         """
         target_bern_means = self.encoder(X).reshape(-1)
-        # self.gumbel_softmax(rng_key, target_bern_means)
-        # interv_target_dist = RelaxedBernoulli(temperature=1e-5, probs=target_bern_means)
-        # interv_target_samples = interv_target_dist.sample(seed=rng_key).reshape(interv_values.shape).astype(int)
-        # print(jnp.sum(interv_target_samples))
-        # pdb.set_trace()
+        interv_target_dist = RelaxedBernoulli(temperature=1e-6, probs=target_bern_means)
+        interv_target_samples = interv_target_dist.sample(seed=rng_key).reshape(interv_values.shape)
 
         # Draw (L, Σ) ~ q_ϕ(L, Σ) 
         full_l_batch, full_log_prob_l = self.sample_L_and_Σ(rng_key, LΣ_params)
         log_noise_std_samples = full_l_batch[:, -self.noise_dim:]  # (posterior_samples, 1)
-        L_samples = vmap(self.lower, in_axes=(0))(full_l_batch[:,  :self.l_dim]) # (posterior_samples, d, d)
+        
+        if self.learn_L:
+            L_samples = vmap(self.lower, in_axes=(0))(full_l_batch[:,  :self.l_dim]) # (posterior_samples, d, d)
+        else: 
+            L_samples = jnp.tile(self.L[None, :, :], (self.posterior_samples, 1, 1))
 
         # Draw P ~ q_ϕ(P | L, Σ) if we are learning P, else use GT value
         P_samples, batched_P_logits = self.get_P(rng_key, full_l_batch, hard) # (posterior_samples, d, d) 
@@ -426,13 +412,14 @@ class BIOLS_Interv(hk.Module):
                                                         W_samples,
                                                         P_samples,
                                                         jnp.exp(log_noise_std_samples),
-                                                        target_bern_means.reshape(interv_values.shape).astype(int),
+                                                        interv_target_samples.reshape(interv_values.shape),
                                                         interv_values
                                                     )
 
         # Stochastic decoder -> causal variables z to predict x                                  
         Mu_X = vmap(self.decoder, (0), (0))(batched_qz_samples) # (posterior_samples, n, proj_dims)
-        pred_X = Mu_X + jnp.multiply(1.0, random.normal(rng_key, shape=(Mu_X.shape)))
+        pred_X = Mu_X 
+        # + jnp.multiply(1.0, random.normal(rng_key, shape=(Mu_X.shape)))
 
         return (pred_X, P_samples, batched_P_logits, batched_qz_samples, full_l_batch, 
-                full_log_prob_l, L_samples, W_samples, log_noise_std_samples, target_bern_means.reshape(interv_values.shape).astype(int))
+                full_log_prob_l, L_samples, W_samples, log_noise_std_samples, interv_target_samples.reshape(interv_values.shape).astype(int))

@@ -1,19 +1,20 @@
 import jax.numpy as jnp
 import numpy as onp
 import networkx as nx
-# import cdt
+import cdt
 import graphical_models
 from sklearn import metrics as sklearn_metrics
 from sklearn.metrics import roc_curve, auc
 from scipy.optimize import linear_sum_assignment
 
 def evaluate(rng_key, model_params, LΣ_params, forward, interv_nodes,
-            interv_values, z_samples, z_gt, gt_W, gt_sigmas, gt_P, loss, log_dict, 
-            opt, proj_dims=None, image=False, interv_model=False, x_gt=None):
+            interv_values, z_samples, z_gt, gt_W, gt_sigmas, gt_P, gt_L, 
+            loss, log_dict, opt, proj_dims=None, image=False, 
+            interv_model=False, x_gt=None):
     
     eval_dict = eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, 
                             interv_nodes, interv_values, z_gt, gt_W, gt_sigmas, gt_P, 
-                            opt, image=image, interv_model=interv_model, x_gt=x_gt)
+                            gt_L, opt, image=image, interv_model=interv_model, x_gt=x_gt)
 
     mcc_scores = []
     for j in range(len(z_samples)):
@@ -57,7 +58,8 @@ def from_W(W: jnp.ndarray, dim: int) -> jnp.ndarray:
 
 
 def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_nodes, 
-            interv_values, z_data, gt_W, gt_sigmas, P, opt, image=False, interv_model=False, x_gt=None):
+            interv_values, z_data, gt_W, gt_sigmas, P, L, opt, image=False, 
+            interv_model=False, x_gt=None):
     """
         Computes mean error statistics for P, L parameters and data
         data should be observational
@@ -107,7 +109,8 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
                                                                                                 x_gt,
                                                                                                 interv_values, 
                                                                                                 LΣ_params, 
-                                                                                                P=P)
+                                                                                                P=P,
+                                                                                                L=L)
 
 
     else: 
@@ -147,8 +150,8 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
         gt_graph_g = nx.from_numpy_matrix(onp.array(binary_gt_graph), create_using=nx.DiGraph)
         pred_graph_g = nx.from_numpy_matrix(onp.array(binary_est_W), create_using=nx.DiGraph)
 
-        # auprcs_w.append(cdt.metrics.precision_recall(gt_graph_w, pred_graph_w)[0])
-        # auprcs_g.append(cdt.metrics.precision_recall(gt_graph_g, pred_graph_g)[0])
+        auprcs_w.append(cdt.metrics.precision_recall(gt_graph_w, pred_graph_w)[0])
+        auprcs_g.append(cdt.metrics.precision_recall(gt_graph_g, pred_graph_g)[0])
 
         stats = count_accuracy(gt_W, est_W_clipped)
         true_KL_divergence = precision_kl_loss(gt_sigmas, gt_W, est_noise, est_W_clipped)
@@ -171,8 +174,8 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
 
     out_stats = {key: onp.mean(stats[key]) for key in stats}
     out_stats["auroc"] = auroc(W_samples, gt_W, edge_threshold)
-    # out_stats["auprc_w"] = onp.array(auprcs_w).mean()
-    # out_stats["auprc_g"] = onp.array(auprcs_g).mean()
+    out_stats["auprc_w"] = onp.array(auprcs_w).mean()
+    out_stats["auprc_g"] = onp.array(auprcs_g).mean()
     return out_stats
 
 

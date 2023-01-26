@@ -117,7 +117,8 @@ z_gt, interv_nodes, x_gt, P, gt_interv_targets, interv_values = datagen.get_data
                                                         interv_values, 
                                                         l_dim, 
                                                         noise_dim, 
-                                                        P=gt_P
+                                                        P=gt_P,
+                                                        L=gt_L
                                                     )
 
 def calc_neg_elbo(model_params, LΣ_params, rng_key, gt_x_data, interv_values):
@@ -151,7 +152,8 @@ def calc_neg_elbo(model_params, LΣ_params, rng_key, gt_x_data, interv_values):
                                                         x_gt, 
                                                         interv_values, 
                                                         LΣ_params, 
-                                                        P=gt_P)
+                                                        P=gt_P,
+                                                        L=gt_L)
 
         # - exp_{P, L, Σ} exp_{Z | P, L, Σ} log p(X | Z)
         nll = jit(vmap(utils.get_mse, (None, 0), 0))(gt_x_data, pred_X)
@@ -171,7 +173,7 @@ def calc_neg_elbo(model_params, LΣ_params, rng_key, gt_x_data, interv_values):
     _, neg_elbos = lax.scan(lambda _, rng_key: (None, get_outer_expectation(rng_key)), None, rng_keys)
     return jnp.mean(neg_elbos)
 
-# @jit
+@jit
 def gradient_step(model_params, LΣ_params, rng_key, gt_z_data, gt_x_data, interv_values):
     """
         1. Compute negative ELBO to be minimized
@@ -208,7 +210,8 @@ def gradient_step(model_params, LΣ_params, rng_key, gt_z_data, gt_x_data, inter
                                                     gt_x_data,
                                                     interv_values, 
                                                     LΣ_params, 
-                                                    P=gt_P)
+                                                    P=gt_P,
+                                                    L=gt_L)
 
     # Obtain KL between predicted and GT observational joint distribution
     batch_get_obs_joint_dist_params = vmap(utils.get_joint_dist_params, (0, 0), (0, 0))
@@ -236,7 +239,7 @@ def gradient_step(model_params, LΣ_params, rng_key, gt_z_data, gt_x_data, inter
         "KL(L)": jnp.mean(KL_term_LΣ)
     }
 
-    return (loss, rng_key, model_grads, LΣ_grads, log_dict, W_samples, z_samples, pred_X, pred_W_means, interv_target_samples)
+    return (loss, rng_key_, model_grads, LΣ_grads, log_dict, W_samples, z_samples, pred_X, pred_W_means, interv_target_samples)
 
 @jit
 def update_params(model_grads, model_opt_params, model_params, LΣ_grads, LΣ_opt_params, LΣ_params):
@@ -250,7 +253,7 @@ def update_params(model_grads, model_opt_params, model_params, LΣ_grads, LΣ_op
     return model_params, model_opt_params, LΣ_params, LΣ_opt_params
 
 # Training loop
-with tqdm(range(10)) as pbar:
+with tqdm(range(opt.num_steps)) as pbar:
     for i in pbar:
         
         (   loss, 
@@ -269,50 +272,60 @@ with tqdm(range(10)) as pbar:
         interv_target_acc = correct_targets * 100 / (n*d)
         print(f"interv_target_acc: {interv_target_acc}")
 
-        # if (i+1) % 500 == 0 or i == 0:  
-        #     wandb_dict, eval_dict = evaluate(
-        #                                     rng_key, 
-        #                                     model_params, 
-        #                                     LΣ_params, 
-        #                                     forward, 
-        #                                     interv_nodes, 
-        #                                     interv_values, 
-        #                                     z_samples, 
-        #                                     z_gt, 
-        #                                     gt_W,
-        #                                     gt_sigmas,
-        #                                     gt_P,
-        #                                     loss,
-        #                                     log_dict,
-        #                                     opt,
-        #                                     interv_model=True,
-        #                                     x_gt=x_gt
-        #                                 )
+        if (i+1) % 500 == 0 or i == 0:  
+            wandb_dict, eval_dict = evaluate(
+                                            rng_key, 
+                                            model_params, 
+                                            LΣ_params, 
+                                            forward, 
+                                            interv_nodes, 
+                                            interv_values, 
+                                            z_samples, 
+                                            z_gt, 
+                                            gt_W,
+                                            gt_sigmas,
+                                            gt_P,
+                                            gt_L,
+                                            loss,
+                                            log_dict,
+                                            opt,
+                                            interv_model=True,
+                                            x_gt=x_gt
+                                        )
 
-        #     if opt.off_wandb is False:  
-        #         plt.imshow(pred_W_means)
-        #         plt.savefig(join(logdir, 'pred_w.png'))
-        #         wandb_dict["graph_structure(GT-pred)/Predicted W"] = wandb.Image(join(logdir, 'pred_w.png'))
-        #         wandb.log(wandb_dict, step=i)
+#             if opt.off_wandb is False:  
+#                 plt.imshow(pred_W_means)
+#                 plt.savefig(join(logdir, 'pred_w.png'))
+#                 wandb_dict["graph_structure(GT-pred)/Predicted W"] = wandb.Image(join(logdir, 'pred_w.png'))
+#                 wandb.log(wandb_dict, step=i)
 
-        #     shd = eval_dict["shd"]
-        #     tqdm.write(f"Step {i} | {loss}")
-        #     tqdm.write(f"Z_MSE: {log_dict['z_mse']} | X_MSE: {log_dict['x_mse']}")
-        #     tqdm.write(f"L MSE: {log_dict['L_mse']}")
-        #     tqdm.write(f"SHD: {eval_dict['shd']} | CPDAG SHD: {eval_dict['shd_c']} | AUROC: {eval_dict['auroc']}")
-        #     tqdm.write(f"KL(learned || true): {onp.array(log_dict['true_obs_KL_term_Z'])}")
-        #     tqdm.write(f" ")
+            shd = eval_dict["shd"]
+            tqdm.write(f"Step {i} | {loss}")
+            tqdm.write(f"Z_MSE: {log_dict['z_mse']} | X_MSE: {log_dict['x_mse']}")
+            tqdm.write(f"L MSE: {log_dict['L_mse']}")
+            tqdm.write(f"SHD: {eval_dict['shd']} | CPDAG SHD: {eval_dict['shd_c']} | AUROC: {eval_dict['auroc']}")
+            tqdm.write(f"KL(learned || true): {onp.array(log_dict['true_obs_KL_term_Z'])}")
+            tqdm.write(f" ")
 
-        # postfix_dict = OrderedDict(
-        #     KL=f"{log_dict['true_obs_KL_term_Z']:.4f}", 
-        #     L_mse=f"{log_dict['L_mse']:.3f}",
-        #     SHD=shd,
-        #     AUROC=f"{eval_dict['auroc']:.2f}",
-        #     loss=f"{loss:.4f}",
-        #     interv_acc=f"{interv_target_acc:.2f}"
-        # )
-        # pbar.set_postfix(postfix_dict)
-        pdb.set_trace()
+        postfix_dict = OrderedDict(
+            KL=f"{log_dict['true_obs_KL_term_Z']:.4f}", 
+            L_mse=f"{log_dict['L_mse']:.3f}",
+            SHD=shd,
+            AUROC=f"{eval_dict['auroc']:.2f}",
+            loss=f"{loss:.4f}",
+            interv_acc=f"{interv_target_acc:.2f}"
+        )
+        pbar.set_postfix(postfix_dict)
+
+        if jnp.any(jnp.isnan(LΣ_grads)):
+            pdb.set_trace()
+            raise Exception("Got NaNs in L grads")
+        
+        if jnp.any(jnp.isnan(ravel_pytree(model_grads)[0])):
+            flattened_pytree, unravel_pytree_fn  = ravel_pytree(model_grads)
+            modified_model_grads  = jnp.nan_to_num(flattened_pytree)
+            model_grads = unravel_pytree_fn(modified_model_grads)
+
         model_params, model_opt_params, LΣ_params, LΣ_opt_params = update_params(model_grads, 
                                                                                 model_opt_params, 
                                                                                 model_params, 
@@ -320,4 +333,10 @@ with tqdm(range(10)) as pbar:
                                                                                 LΣ_opt_params, 
                                                                                 LΣ_params)
 
-        if jnp.any(jnp.isnan(ravel_pytree(LΣ_params)[0])):   raise Exception("Got NaNs in L params")
+        if jnp.any(jnp.isnan(ravel_pytree(LΣ_params)[0])):   
+            pdb.set_trace()
+            raise Exception("Got NaNs in L params")
+        
+        if jnp.any(jnp.isnan(ravel_pytree(model_params)[0])):  
+            pdb.set_trace() 
+            raise Exception("Got NaNs in model params")

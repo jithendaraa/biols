@@ -1,5 +1,5 @@
 defaults:
-  lr: 0.0008
+  lr: 0.0006
   graph_type: 'erdos-renyi'
   sem_type: 'linear-gauss'
   noise_sigma: 0.1
@@ -63,15 +63,15 @@ linear_vector_multi_interv_learn_L:
   exp_name: 'BIOLS linear multi interventional learn L'
   interv_type: 'multi'
   proj: 'linear'
-  num_nodes: 5
+  num_nodes: 20
   exp_edges: 1.0
   proj_dims: 100
   data_seed: 1
   obs_data: 500
-  n_interv_sets: 100
+  n_interv_sets: 800
   pts_per_interv: 100
   num_steps: 3000
-  learn_L: True 
+  learn_L: False 
   off_wandb: True
   
 
@@ -120,7 +120,7 @@ batched_linear_vector_multi_interv_learn_SCM:
   obs_data: 500
   n_interv_sets: 100
   pts_per_interv: 100
-  batches: 10000
+  batches: 21000
   learn_L: True
   learn_P: True
 
@@ -158,14 +158,14 @@ nonlinear_vector_multi_interv_learn_L:
   exp_name: 'BIOLS nonlinear multi interventional learn L'
   interv_type: 'multi'
   proj: '3_layer_mlp'
-  num_nodes: 5
+  num_nodes: 10
   exp_edges: 1.0
   proj_dims: 100
   data_seed: 1
   obs_data: 500
-  n_interv_sets: 20
+  n_interv_sets: 50
   pts_per_interv: 100
-  num_steps: 10000
+  num_steps: 2000
   learn_L: True 
   L_KL: False
 
