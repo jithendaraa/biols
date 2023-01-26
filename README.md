@@ -1,5 +1,4 @@
 # BIOLS: Bayesian Inference over Latent SCMs
-Official implementation of [Learning Latent Structural Causal Models](https://arxiv.org/abs/2210.13583) for approximate Bayesian inference over causal variables, structure and parameters of latent SCMs from low-level data.
 
 ## Installation
 
