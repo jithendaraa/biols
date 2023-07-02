@@ -21,9 +21,9 @@ def projection_forward(proj_dims, z):
     projector_model = NonLinearProjection(proj_dims)
     return projector_model(z)
 
-def init_projection_params(rng_key, n, d, proj_dims):
+def init_projection_params(rng_key, d, proj_dims):
     forward = hk.transform(projection_forward)
-    z = jnp.ones((n, d))
+    z = jnp.ones((10, d))
     def init_params(rng_key):
         projection_model_params = forward.init(next(rng_key), proj_dims, z)
         return projection_model_params

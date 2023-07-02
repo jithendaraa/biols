@@ -1,29 +1,15 @@
 #!/bin/bash
 
-dataset=$1
-train=$2
-model=$3
-time=$4
-config=$5
+config=$1
+time=$2
 
-seeds=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+seeds=(0 1 2 3 4)
 array_len=$(( ${#seeds[@]} ))
 echo $array_len
 
-if [ ${train} == 'train' ]
-then
-    if [ ${dataset} == 'er' ]
-    then
-        output_file="out/VAE_vector/vae-vector-%A_%a.out"
-        echo "Train VAE vector: ${config}"
-    else
-        echo "Not implemented dataset ${dataset}" 
-    fi
-else
-    echo "Not implemented dataset ${train}" 
-fi
+output_file="out/VAE_vector/vae-vector-%A_%a.out"
 
-command="sbatch --array=1-${array_len}%512 --job-name ${config} --output ${output_file} --time ${time} scripts/vae_vector_job.sh ${config}"   
+command="sbatch --array=1-${array_len}%512 --job-name baseline_VAE_${config} --output ${output_file} --time ${time} scripts/vae_vector_job.sh ${config}"   
 echo ""
 echo ${command}
 echo ""

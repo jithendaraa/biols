@@ -1,4 +1,3 @@
-from tkinter import W
 import haiku as hk
 import jax, pdb
 import jax.numpy as jnp
@@ -27,27 +26,13 @@ class VAE(hk.Module):
             hk.Linear(d + self.elements_in_chol)
         ])
 
-        if sigmoid is False:
-            self.decoder = hk.Sequential([
+        self.decoder = hk.Sequential([
             hk.Linear(64), jax.nn.relu,
             hk.Linear(128), jax.nn.relu,
             hk.Linear(256), jax.nn.relu,
             hk.Linear(256), jax.nn.relu,
-            hk.Linear(128), jax.nn.relu,
-            hk.Linear(128), jax.nn.relu,
             hk.Linear(D)
         ])
-
-        else:
-            self.decoder = hk.Sequential([
-                hk.Linear(64), jax.nn.relu,
-                hk.Linear(128), jax.nn.relu,
-                hk.Linear(256), jax.nn.relu,
-                hk.Linear(256), jax.nn.relu,
-                hk.Linear(128), jax.nn.relu,
-                hk.Linear(128), jax.nn.relu,
-                hk.Linear(D), jax.nn.sigmoid
-            ])
     
     def lower(self, chols_flat):
         """
@@ -55,7 +40,7 @@ class VAE(hk.Module):
             strictly lower-triangular matrix
         """
         L = jnp.zeros((self.d, self.d))
-        L = ops.index_update(L, jnp.tril_indices(self.d), chols_flat)
+        L = L.at[jnp.tril_indices(self.d)].set(chols_flat) 
         return L
     
     def reparam_sample(self, rng_key, z_mu, z_L_chol):
@@ -83,8 +68,5 @@ class VAE(hk.Module):
 
         X_mu = self.decoder(z_pred)
         X_recons = X_mu + jnp.multiply(1.0, random.normal(rng_key, shape=(X_mu.shape)))
-
-        if self.sigmoid is False: 
-            return X_recons, z_pred, z_mus, z_L_chols
-        return X_recons*255., z_pred, z_mus, z_L_chols
+        return X_recons, z_pred, z_mus, z_L_chols
         

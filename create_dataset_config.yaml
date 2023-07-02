@@ -1,0 +1,116 @@
+create_dataset:
+  exp_name: 'Create dataset'
+  data_seed: 0
+  min_interv_value: -5.
+  max_interv_value: 5.
+  interv_value_sampling: 'zeros'
+  eq_noise_var: False
+  dataset: 'vector'
+  noise_sigma: 0.1
+  decoder_sigma: 0.1
+  sem_type: 'linear-gauss'
+  baseroot: '/home/mila/j/jithendaraa.subramanian'
+  edge_threshold: 0.3
+
+d5:
+  num_nodes: 5
+  proj_dims: 100
+  n_pairs: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+
+son_d5:
+  num_nodes: 5
+  proj_dims: 5
+  n_pairs: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  proj: 'SON'
+
+d10:
+  num_nodes: 10
+  proj_dims: 100
+  n_pairs: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+
+son_d10:
+  num_nodes: 10
+  proj_dims: 10
+  n_pairs: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  proj: 'SON'
+  
+d20:
+  num_nodes: 20
+  proj_dims: 100
+  n_pairs: 5000
+  n_interv_sets: 50
+  pts_per_interv: 100
+
+son_d20:
+  num_nodes: 20
+  proj_dims: 20
+  n_pairs: 5000
+  n_interv_sets: 50
+  pts_per_interv: 100
+  proj: 'SON'
+
+# Exactly intervention value; noise for z1 and z2 is same
+ws_datagen_no_interv_noise_fix_noise:
+  datagen_type: 'weakly_supervised'
+  no_interv_noise: True
+  fix_noise: True
+
+ws_datagen_no_interv_noise_nofix_noise:
+  datagen_type: 'weakly_supervised'
+  no_interv_noise: True
+  fix_noise: False
+
+# Intervention value + noise; noise for z1 and z2 is same
+ws_datagen_interv_noise_fix_noise:
+  datagen_type: 'weakly_supervised'
+  no_interv_noise: False
+  fix_noise: True
+
+# Intervention value + noise; noise for z1 and z2 is not same
+ws_datagen_interv_noise_nofix_noise:
+  datagen_type: 'weakly_supervised'
+  no_interv_noise: False
+  fix_noise: False
+
+default_datagen:
+  datagen_type: 'default'
+
+er1: 
+  exp_edges: 1.0
+  graph_type: 'erdos-renyi'
+
+er2: 
+  exp_edges: 2.0
+  graph_type: 'erdos-renyi'
+
+er4: 
+  exp_edges: 4.0
+  graph_type: 'erdos-renyi'
+
+linear_proj:
+  proj: 'linear'
+
+nonlinear_proj:
+  proj: '3_layer_mlp'
+
+multi_interv:
+  interv_type: 'multi'
+
+single_interv:
+  interv_type: 'single'
+
+zero_intervs:
+  interv_value_sampling: 'zeros'
+
+gaussian_intervs:
+  interv_value_sampling: 'gaussian'
+
+

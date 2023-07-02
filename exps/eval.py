@@ -1,20 +1,46 @@
+import cdt, pdb
 import jax.numpy as jnp
 import numpy as onp
 import networkx as nx
-import cdt
 import graphical_models
 from sklearn import metrics as sklearn_metrics
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score, precision_recall_curve
 from scipy.optimize import linear_sum_assignment
+
 
 def evaluate(rng_key, model_params, LΣ_params, forward, interv_nodes,
             interv_values, z_samples, z_gt, gt_W, gt_sigmas, gt_P, gt_L, 
             loss, log_dict, opt, proj_dims=None, image=False, 
-            interv_model=False, x_gt=None):
+            interv_model=False, generative_interv=False, x_gt=None, gt_interv_targets=None,
+            interv_logit_params=None):
     
-    eval_dict = eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, 
-                            interv_nodes, interv_values, z_gt, gt_W, gt_sigmas, gt_P, 
-                            gt_L, opt, image=image, interv_model=interv_model, x_gt=x_gt)
+    eval_mean_args = (
+        rng_key, 
+        proj_dims, 
+        model_params, 
+        LΣ_params, 
+        forward, 
+        interv_nodes, 
+        interv_values, 
+        z_gt, 
+        gt_W, 
+        gt_sigmas, 
+        gt_P, 
+        gt_L, 
+        opt, 
+    )
+
+    eval_mean_kwargs = {
+        "image": image,
+        "interv_model": interv_model,
+        "generative_interv": generative_interv,
+        "x_gt": x_gt,
+        "interv_targets": gt_interv_targets,
+        "learn_intervs": opt.learn_intervs,
+        "interv_logit_params": interv_logit_params
+    }
+
+    eval_dict = eval_mean(*eval_mean_args, **eval_mean_kwargs)
 
     mcc_scores = []
     for j in range(len(z_samples)):
@@ -23,18 +49,24 @@ def evaluate(rng_key, model_params, LΣ_params, forward, interv_nodes,
 
     wandb_dict = {
                 "ELBO": loss,
-                "Z_MSE": log_dict["z_mse"],
                 "X_MSE": log_dict["x_mse"],
-                "L_MSE": log_dict["L_mse"],
                 "KL(L)": log_dict["KL(L)"],
-                "true_obs_KL_term_Z": log_dict["true_obs_KL_term_Z"],
+                # "true_obs_KL_term_Z": log_dict["true_obs_KL_term_Z"],
                 "train sample KL": eval_dict["sample_kl"],
+                
+                # Latent representation
+                "Z_MSE": log_dict["z_mse"],
+                'Evaluations/MCC': mcc_score,
+
+                # Parameter recovery
+                "L_MSE": log_dict["L_mse"],
+
+                # Structural metrics
                 "Evaluations/SHD": eval_dict["shd"],
                 "Evaluations/SHD_C": eval_dict["shd_c"],
                 "Evaluations/AUROC": eval_dict["auroc"],
                 "Evaluations/AUPRC_W": eval_dict["auprc_w"],
                 "Evaluations/AUPRC_G": eval_dict["auprc_g"],
-                'Evaluations/MCC': mcc_score,
 
                 # Confusion matrix related metrics for structure
                 'Evaluations/TPR': eval_dict["tpr"],
@@ -47,8 +79,14 @@ def evaluate(rng_key, model_params, LΣ_params, forward, interv_nodes,
                 'Evaluations/Precision': eval_dict["precision"],
                 'Evaluations/F1 Score': eval_dict["fscore"],
             }
-    
+
+    # Intervention recovery
+    if interv_model:
+        wandb_dict['Interventions/AUROC'] = eval_dict['Interventions/AUROC']
+        wandb_dict['Interventions/AUPRC'] = eval_dict['Interventions/AUPRC']
+
     return wandb_dict, eval_dict
+
 
 def from_W(W: jnp.ndarray, dim: int) -> jnp.ndarray:
     """Turns a d x d matrix into a (d x (d-1)) vector with zero diagonal."""
@@ -59,7 +97,8 @@ def from_W(W: jnp.ndarray, dim: int) -> jnp.ndarray:
 
 def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_nodes, 
             interv_values, z_data, gt_W, gt_sigmas, P, L, opt, image=False, 
-            interv_model=False, x_gt=None):
+            interv_model=False, generative_interv=False, x_gt=None, interv_targets=None, 
+            learn_intervs=False, interv_logit_params=None):
     """
         Computes mean error statistics for P, L parameters and data
         data should be observational
@@ -67,72 +106,36 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
     edge_threshold = 0.3
     hard = True
     dim = opt.num_nodes
-    if opt.eq_noise_var: noise_dim = 1
-    else: noise_dim = dim
+    noise_dim = dim
 
-    z_data = z_data[:opt.obs_data]
-    z_prec = onp.linalg.inv(jnp.cov(z_data.T))
     Zs = z_data[:opt.obs_data]
+    z_prec = onp.linalg.inv(jnp.cov(Zs.T))
     auprcs_w, auprcs_g = [], []
+    
+    if image:
+        forward_args = (model_params, rng_key, hard, proj_dims, rng_key, opt, interv_nodes, interv_values, LΣ_params)
+        forward_kwargs = {'P': P}
+
+    elif interv_model:
+        if generative_interv:   forward_args = (model_params, rng_key, hard, rng_key, opt, interv_nodes, interv_values, LΣ_params, interv_logit_params)
+        else:                   forward_args = (model_params, rng_key, hard, rng_key, opt, x_gt, interv_nodes, interv_values, LΣ_params)
+        forward_kwargs = {'P': P, 'L': L, 'learn_intervs': learn_intervs}
+        
+    else:
+        forward_args = (model_params, rng_key, hard, rng_key, opt, interv_nodes, interv_values, LΣ_params)
+        forward_kwargs = {'P': P}
+
+    res = forward.apply(*forward_args, **forward_kwargs)
 
     if image:
-        (   
-            pred_X,
-            _, 
-            _,
-            batched_qz_samples,
-            full_l_batch, 
-            full_log_prob_l,
-            L_samples, 
-            W_samples, 
-            log_noise_std_samples
-                                    ) = forward.apply(model_params, 
-                                                        rng_key, 
-                                                        hard, 
-                                                        proj_dims, 
-                                                        rng_key, 
-                                                        opt, 
-                                                        interv_nodes, 
-                                                        interv_values, 
-                                                        LΣ_params, 
-                                                        P=P)
+        _, _,  _, _, full_l_batch, _, _, W_samples, _ = res
     
     elif interv_model:
-        (   
-            pred_X, _, _, batched_qz_samples, full_l_batch, 
-            full_log_prob_l, L_samples, W_samples, log_noise_std_samples, _
-                                                                            ) = forward.apply(model_params, 
-                                                                                                rng_key,
-                                                                                                hard,
-                                                                                                rng_key,
-                                                                                                opt,
-                                                                                                x_gt,
-                                                                                                interv_values, 
-                                                                                                LΣ_params, 
-                                                                                                P=P,
-                                                                                                L=L)
+        _, _, _, _, full_l_batch, _, _, W_samples, _, extended_interv_target, _, _ = res
+        pred_interv_target_samples = extended_interv_target[:, :-1]
 
-
-    else: 
-        (   
-            pred_X,
-            _, 
-            _,
-            batched_qz_samples,
-            full_l_batch, 
-            full_log_prob_l,
-            L_samples, 
-            W_samples, 
-            log_noise_std_samples
-                                    ) = forward.apply(model_params, 
-                                                        rng_key, 
-                                                        hard, 
-                                                        rng_key, 
-                                                        opt, 
-                                                        interv_nodes, 
-                                                        interv_values, 
-                                                        LΣ_params, 
-                                                        P=P)
+    else:
+        _, _, _, _, full_l_batch, _, _, W_samples, _ = res
 
     w_noise = full_l_batch[:, -noise_dim:]
 
@@ -143,13 +146,11 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
         
         binary_est_W = jnp.where(est_W_clipped, 1, 0)
         binary_gt_graph = jnp.where(gt_graph_clipped, 1, 0)
-
-        gt_graph_w = nx.from_numpy_matrix(onp.array(gt_graph_clipped), create_using=nx.DiGraph)
-        pred_graph_w = nx.from_numpy_matrix(onp.array(est_W_clipped), create_using=nx.DiGraph)
-
-        gt_graph_g = nx.from_numpy_matrix(onp.array(binary_gt_graph), create_using=nx.DiGraph)
-        pred_graph_g = nx.from_numpy_matrix(onp.array(binary_est_W), create_using=nx.DiGraph)
-
+        
+        gt_graph_w = nx.from_numpy_array(onp.array(gt_graph_clipped), create_using=nx.DiGraph)
+        pred_graph_w = nx.from_numpy_array(onp.array(est_W_clipped), create_using=nx.DiGraph)
+        gt_graph_g = nx.from_numpy_array(onp.array(binary_gt_graph), create_using=nx.DiGraph)
+        pred_graph_g = nx.from_numpy_array(onp.array(binary_est_W), create_using=nx.DiGraph)
         auprcs_w.append(cdt.metrics.precision_recall(gt_graph_w, pred_graph_w)[0])
         auprcs_g.append(cdt.metrics.precision_recall(gt_graph_g, pred_graph_g)[0])
 
@@ -176,7 +177,28 @@ def eval_mean(rng_key, proj_dims, model_params, LΣ_params, forward, interv_node
     out_stats["auroc"] = auroc(W_samples, gt_W, edge_threshold)
     out_stats["auprc_w"] = onp.array(auprcs_w).mean()
     out_stats["auprc_g"] = onp.array(auprcs_g).mean()
+
+    if interv_model:
+        assert len(pred_interv_target_samples.shape) in [2, 3]
+
+        if len(pred_interv_target_samples.shape) == 3:
+            pdb.set_trace()
+            pred_interv_target_samples = pred_interv_target_samples.mean(axis=0)
+        
+        precision, recall, _ = precision_recall_curve(interv_targets.ravel(), pred_interv_target_samples.ravel())
+        interv_auprc = auc(recall, precision)
+        interv_auroc = roc_auc_score(interv_targets.ravel(), pred_interv_target_samples.ravel())
+        out_stats['Interventions/AUROC'] = interv_auroc
+        out_stats['Interventions/AUPRC'] = interv_auprc
+
     return out_stats
+
+
+def gumbel_softmax_logits_auprc(true_interv_targets, interv_gs_logits):
+    true_interv_targets = true_interv_targets.reshape(-1)
+    interv_gs_logits = interv_gs_logits.reshape(-1)
+    interv_auroc = roc_auc_score(true_interv_targets.ravel().ravel())
+    return interv_auroc
 
 
 def auroc(Ws, W_true, threshold=0.3):
@@ -281,15 +303,8 @@ def count_accuracy(W_true, W_est, W_und=None):
     if B_und is not None:
         B_lower += onp.tril(B_und + B_und.T)
     
-    try:
-        pred_lower = onp.flatnonzero(B_lower)
-        cond_lower = onp.flatnonzero(onp.tril(B_true + B_true.T))
-        extra_lower = onp.setdiff1d(pred_lower, cond_lower, assume_unique=True)
-        missing_lower = onp.setdiff1d(cond_lower, pred_lower, assume_unique=True)
-        shd = len(extra_lower) + len(missing_lower) + len(reverse)
-    except:
-        shd = onp.sum(onp.abs(g_flat - pred_flat))
-        
+    shd = jnp.sum(jnp.abs(g_flat - pred_flat))
+
     tn, fp, fn, tp = sklearn_metrics.confusion_matrix(g_flat, pred_flat).ravel()
     if int(tp + fp) > 0:    
         precision = tp / (tp + fp)
@@ -333,7 +348,6 @@ def gaussian_precision_kl(theta, theta_hat):
 def precision_kl_loss(true_noise, true_W, est_noise, est_W):
     """Computes the KL divergence to the true parameters
 
-
     Args:
         true_noise: (d,)-shape vector of noise variances
         true_W: (d,d)-shape adjacency matrix
@@ -367,6 +381,7 @@ def precision_kl_sample_loss(x_prec, est_noise, est_W):
         (onp.eye(dim) - est_W) @ (onp.diag(1.0 / est_noise)) @ (onp.eye(dim) - est_W).T
     )
     return gaussian_precision_kl(x_prec, est_prec)
+
 
 def get_cross_correlation(pred_latent, true_latent):
     """

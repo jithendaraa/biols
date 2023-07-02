@@ -7,60 +7,83 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import jax.random as rnd
-from jax import vmap, random, lax
+from jax import vmap, random, lax, nn
 
-from tensorflow_probability.substrates.jax.distributions import Normal, RelaxedBernoulli, Gumbel, Exponential
-from scipy.special import softmax
+from tensorflow_probability.substrates.jax.distributions import Normal
 from modules.GumbelSinkhorn import GumbelSinkhorn
 
 
 class BIOLS_Interv(hk.Module):
-    def __init__(self, d, posterior_samples, eq_noise_var, tau, hidden_size, 
-                max_deviation, learn_P, learn_L, proj_dims, proj, log_stds_max=10.0, 
-                logit_constraint=10, P=None, L=None):
+    def __init__(
+        self, 
+        d, 
+        posterior_samples, 
+        eq_noise_var, 
+        tau, 
+        hidden_size, 
+        max_deviation, 
+        learn_P, 
+        learn_L, 
+        proj_dims,
+        interv_type='multi',
+        log_stds_max=10.0, 
+        logit_constraint=10, 
+        P=None, 
+        L=None, 
+        interv_targets=None, 
+        learn_intervs=True
+    ):
         """
-            The BIOLS model to estimate SCM from vector data
+            The BIOLS model to learn a latent SCM and infer interventions from vectors
         """
         super().__init__()
         self._set_vars(d, posterior_samples, eq_noise_var, tau,
                         hidden_size, max_deviation, learn_P, learn_L,
-                        log_stds_max, logit_constraint, proj_dims, P, L)
+                        log_stds_max, logit_constraint, interv_type, P, L)
         
+        assert interv_type == 'single'
         self.ds = GumbelSinkhorn(self.d, noise_type="gumbel", tol=max_deviation)
+        self.interv_targets = interv_targets
+        self.learn_intervs = learn_intervs
+
+        encoder_in = max(32, proj_dims // 2)
+        encoder_out = d + int(self.interv_type == 'single')
+        decoder_in = encoder_in
+        decoder_out = proj_dims
 
         self.encoder = hk.Sequential([
-            hk.Linear(proj_dims, with_bias=False), jax.nn.gelu,
-            hk.Linear(proj_dims // 2, with_bias=False), jax.nn.gelu,
-            hk.Linear(32, with_bias=False), jax.nn.gelu,
-            hk.Linear(32, with_bias=False), jax.nn.gelu,
-            hk.Linear(d, with_bias=False), jax.nn.sigmoid
+            hk.Linear(encoder_in, name='interv_encoder_0', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_1', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_2', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_3', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_4', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_5', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_6', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_7', with_bias=False), jax.nn.gelu,
+            hk.Linear(128, name='interv_encoder_8', with_bias=False), jax.nn.gelu,
+            hk.Linear(encoder_out, name='interv_encoder_9', with_bias=False)
+        ])
+
+        self.decoder = hk.Sequential([
+            hk.Flatten(), 
+            hk.Linear(decoder_in, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(decoder_out, with_bias=False)
         ])
 
         if self.learn_P:
             self.p_logits_model = hk.Sequential([
-                                hk.Flatten(), 
-                                hk.Linear(hidden_size), jax.nn.gelu,
-                                hk.Linear(hidden_size), jax.nn.gelu,
-                                hk.Linear(d * d)
-                            ])
-
-        if proj == 'linear':
-            self.decoder = hk.Sequential([
-                hk.Flatten(), hk.Linear(proj_dims, with_bias=False)
+                hk.Flatten(), 
+                hk.Linear(hidden_size), jax.nn.gelu,
+                hk.Linear(hidden_size), jax.nn.gelu,
+                hk.Linear(d * d)
             ])
-        else:
-            self.decoder = hk.Sequential([
-                    hk.Flatten(), 
-                    hk.Linear(16, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(proj_dims, with_bias=False)
-                ])
 
     def _set_vars(self, d, posterior_samples, eq_noise_var, tau,
                     hidden_size, max_deviation, learn_P, learn_L, 
-                    log_stds_max, logit_constraint, proj_dims, P=None, 
+                    log_stds_max, logit_constraint, interv_type, P=None, 
                     L=None):
         """
             Sets important variables/attributes for this class.
@@ -76,7 +99,7 @@ class BIOLS_Interv(hk.Module):
         self.learn_L = learn_L
         self.log_stds_max = log_stds_max
         self.logit_constraint = logit_constraint
-        self.proj_dims = proj_dims
+        self.interv_type = interv_type
         self.P = P
         self.L = L
         if eq_noise_var:    self.noise_dim = 1
@@ -320,6 +343,18 @@ class BIOLS_Interv(hk.Module):
         samples = vmap(self.eltwise_ancestral_sample, (None, None, None, 0, 0, 0), (0))(W, P, eps_std, rng_keys, interv_targets, interv_values)
         return samples
 
+    def gumbel_softmax(self, rng_key, logits, tau=1., axis=-1):
+        # `logits` has to be 2d
+        gumbels = -jnp.log(rnd.exponential(rng_key, logits.shape)) # ~Gumbel(0,1)
+        gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
+        soft_samples = nn.softmax(gumbels, axis=axis)
+
+        x_index = jnp.arange(0, len(gumbels))
+        index = jnp.argmax(soft_samples, axis=axis)
+        hard_samples = jnp.zeros_like(logits)
+        hard_samples = hard_samples.at[x_index, index].set(1.0)
+        return hard_samples - lax.stop_gradient(soft_samples) + soft_samples
+
     def __call__(self, rng_key, X, interv_values, LΣ_params, hard):
         """
             Forward pass of BIOLS:
@@ -385,10 +420,9 @@ class BIOLS_Interv(hk.Module):
                     `batch_size` samples of log sigma_i which is used to obtain
                     Σ_i as diag(exp(2 * log sigma_i)) 
         """
-        target_bern_means = self.encoder(X).reshape(-1)
-        interv_target_dist = RelaxedBernoulli(temperature=1e-6, probs=target_bern_means)
-        interv_target_samples = interv_target_dist.sample(seed=rng_key).reshape(interv_values.shape)
-
+        extended_interv_target, pred_is_observ_logits, pred_is_observ = self.infer_single_target_intervention(rng_key, X)
+        pred_interv_targets = extended_interv_target[:, :-1]
+        
         # Draw (L, Σ) ~ q_ϕ(L, Σ) 
         full_l_batch, full_log_prob_l = self.sample_L_and_Σ(rng_key, LΣ_params)
         log_noise_std_samples = full_l_batch[:, -self.noise_dim:]  # (posterior_samples, 1)
@@ -408,18 +442,36 @@ class BIOLS_Interv(hk.Module):
         # z ~ q(Z | P, L, Σ)
         vmapped_ancestral_sample = vmap(self.ancestral_sample, (0, 0, 0, 0, None, None), (0))
         batched_qz_samples = vmapped_ancestral_sample(  
-                                                        rng_keys,
-                                                        W_samples,
-                                                        P_samples,
-                                                        jnp.exp(log_noise_std_samples),
-                                                        interv_target_samples.reshape(interv_values.shape),
-                                                        interv_values
-                                                    )
+            rng_keys,
+            W_samples,
+            P_samples,
+            jnp.exp(log_noise_std_samples),
+            pred_interv_targets,
+            interv_values
+        )
 
-        # Stochastic decoder -> causal variables z to predict x                                  
+        # Decode back to X
         Mu_X = vmap(self.decoder, (0), (0))(batched_qz_samples) # (posterior_samples, n, proj_dims)
         pred_X = Mu_X 
         # + jnp.multiply(1.0, random.normal(rng_key, shape=(Mu_X.shape)))
 
         return (pred_X, P_samples, batched_P_logits, batched_qz_samples, full_l_batch, 
-                full_log_prob_l, L_samples, W_samples, log_noise_std_samples, interv_target_samples.reshape(interv_values.shape).astype(int))
+                full_log_prob_l, L_samples, W_samples, log_noise_std_samples, 
+                extended_interv_target, pred_is_observ_logits, pred_is_observ)
+    
+    def infer_single_target_intervention(self, rng_key, X):
+        logits = self.encoder(X)
+
+        extended_interv_target = self.gumbel_softmax(rng_key, logits) # (n, d+1)
+
+        is_observ_logits = logits[:, -1]
+        is_observ = extended_interv_target[:, -1]
+        # is_interv = 1 - is_observ
+
+        # max_indices = lax.stop_gradient(jnp.argmax(logits[:, :-1], axis=1))
+        # interv_target_samples = jnp.zeros_like(logits[:, :-1]).astype(int)
+        # rows = jnp.arange(logits[:, :-1].shape[0])
+        # interv_target_samples = interv_target_samples.at[rows, max_indices].set(1)
+        # obs_masked_interv_target_samples = interv_target_samples * is_interv[:, None]
+        # return obs_masked_interv_target_samples, logits
+        return extended_interv_target, is_observ_logits, is_observ

@@ -1,26 +1,20 @@
 #!/bin/bash
 
 dataset=$1
-train=$2
-model=$3
-time=$4
-config=$5
+model=$2
+time=$3
+config=$4
 
-seeds=(1 5 6 7 8 9 10)
+seeds=(0 1 2 3 4)
 array_len=$(( ${#seeds[@]} ))
 echo $array_len
 
-if [ ${train} == 'train' ]
+if [ ${dataset} == 'er' ]
 then
-    if [ ${dataset} == 'er' ]
-    then
-        output_file="out/BIOLS_batched_vector/biols-batched-vector-%A_%a.out"
-        echo "Train Batched BIOLS vector: ${config}"
-    else
-        echo "Not implemented dataset ${dataset}" 
-    fi
+    output_file="out/BIOLS_batched_vector/biols-batched-vector-%A_%a.out"
+    echo "Train Batched BIOLS vector: ${config}"
 else
-    echo "Not implemented dataset ${train}" 
+    echo "Not implemented dataset ${dataset}" 
 fi
 
 command="sbatch --array=1-${array_len}%512 --job-name ${config} --output ${output_file} --time ${time} scripts/batched_biols_job.sh ${config}"   

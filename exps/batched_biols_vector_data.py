@@ -90,7 +90,7 @@ if opt.off_wandb is False:
                 entity = opt.wandb_entity, 
                 config = vars(opt), 
                 settings = wandb.Settings(start_method="fork"))
-    wandb.run.name = logdir.split('/')[-1]
+    wandb.run.name = f'BIOLS_s{opt.data_seed}_d{opt.num_nodes}_steps{opt.num_steps}_obs{opt.obs_data}_KL{opt.L_KL}'
     wandb.run.save()
     wandb.log({"graph_structure(GT-pred)/Ground truth W": wandb.Image(join(logdir, 'gt_w.png'))}, step=0)
 
@@ -347,7 +347,7 @@ with tqdm(range(opt.num_steps)) as pbar:
         for key in epoch_dict:
             epoch_dict[key] = epoch_dict[key] / num_batches
 
-        if (i+1) % 50 == 0 or i == 0:    
+        if (i+1) % 100 == 0 or i == 0:    
             random_idxs = onp.random.choice(n, min(4000, n), replace=False)  
 
             wandb_dict, eval_dict = evaluate(  

@@ -1,8 +1,5 @@
 defaults:
-  lr: 0.0006
-  graph_type: 'erdos-renyi'
-  sem_type: 'linear-gauss'
-  noise_sigma: 0.1
+  lr: 0.0009
   logdir: 'logs'
   learn_P: False
   obs_data: 500
@@ -18,17 +15,167 @@ defaults:
   bethe_iters: 20
   L_KL: False
   P_KL: False
-  n_interv_sets: 20
   dataset: 'vector'
-  interv_value: 'uniform'
   learn_noise: True
   num_samples: 2500
+  likelihood: False
+  learn_Z: True
+  learn_intervs: False
+  datagen_type: 'default'
+  interv_value_sampling: 'gaussian'
+  edge_threshold: 0.3
 
   # wandb
-  wandb_project: 'structure-learning'
+  wandb_project: 'BIOLS'
   wandb_entity: 'structurelearning'
   offline_wandb: False
   off_wandb: True
+
+transformer:
+  exp_name: 'Transformer intervention inference'
+  interv_type: 'single'
+  proj: 'linear'
+  batch_size: 128
+  lr: 0.0005
+  num_nodes: 5
+  proj_dims: 10
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 100
+  n_interv_sets: 10
+  pts_per_interv: 10
+  num_steps: 10000
+  off_wandb: False
+  datagen_type: 'weakly_supervised'
+  interv_value_sampling: 'gaussian'
+  num_epochs: 100
+  load_data: True
+  num_encoder_layers: 12
+  nhead: 4
+  num_data_seeds: 1000
+
+# Encoder BIOLS
+encoder_BIOLS_linear:
+  exp_name: 'Encoder BIOLS STI learn L SON'
+  interv_type: 'multi'
+  proj: 'linear'
+  num_nodes: 5
+  proj_dims: 10
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  learn_P: False
+  learn_L: True 
+  off_wandb: True
+  learn_intervs: False
+  datagen_type: 'weakly_supervised'
+
+
+biols_SON_single_target_inference:
+  exp_name: 'BIOLS STI learn L SON'
+  interv_type: 'single'
+  proj: 'SON'
+  num_nodes: 5
+  proj_dims: 5
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 6000
+  n_interv_sets: 30
+  pts_per_interv: 200
+  num_steps: 20000
+  L_KL: False
+  P_KL: False
+  learn_P: False
+  learn_L: True 
+  off_wandb: True
+  learn_intervs: True
+  datagen_type: 'weakly_supervised'
+
+
+gen_biols_SON_learnL_fixZandI:
+  exp_name: 'Generative BIOLS learn L Fix Z and I(SON)'
+  interv_type: 'single'
+  proj: 'SON'
+  num_nodes: 5
+  proj_dims: 5
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 6000
+  n_interv_sets: 30
+  pts_per_interv: 200
+  num_steps: 20000
+  L_KL: False
+  P_KL: False
+  learn_P: False
+  learn_L: True 
+  off_wandb: True
+  learn_intervs: False
+  datagen_type: 'weakly_supervised'
+  learn_Z: False
+
+
+gen_biols_SON_single_target_inference:
+  exp_name: 'Generative BIOLS STI learn L (SON)'
+  interv_type: 'single'
+  proj: 'SON'
+  num_nodes: 5
+  proj_dims: 5
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 6000
+  n_interv_sets: 30
+  pts_per_interv: 200
+  num_steps: 20000
+  L_KL: False
+  P_KL: False
+  learn_P: False
+  learn_L: False 
+  off_wandb: True
+  learn_intervs: True
+  datagen_type: 'weakly_supervised'
+
+
+multi_linear_interv_biols:
+  exp_name: 'BIOLS-Interv linear multi interventional learn L'
+  interv_type: 'multi'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 0
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  off_wandb: True
+  L_KL: False
+  P_KL: False
+  learn_L: True 
+  learn_Z: True
+  learn_intervs: False
+
+
+single_linear_interv_biols:
+  exp_name: 'BIOLS-Interv linear single interventional learn L'
+  interv_type: 'single'
+  proj: 'linear'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 100
+  data_seed: 0
+  obs_data: 500
+  n_interv_sets: 20 
+  pts_per_interv: 100
+  num_steps: 20000
+  off_wandb: False
+  L_KL: False
+  P_KL: False
+  learn_L: True 
+  learn_Z: False
+  learn_intervs: False
 
 
 # ! Exp 1. Learn L linear BIOLS
@@ -48,32 +195,86 @@ linear_vector_obs_learn_L:
 linear_vector_single_interv_learn_L:
   exp_name: 'BIOLS linear single interventional learn L'
   interv_type: 'single'
-  proj: 'linear'
-  num_nodes: 5
+  proj: 'linear' 
+  num_nodes: 10
   exp_edges: 1.0
-  proj_dims: 100
-  data_seed: 6
-  obs_data: 500
+  proj_dims: 10
+  data_seed: 0
+  obs_data: 3000
   n_interv_sets: 20
-  pts_per_interv: 100
-  num_steps: 5000
-  learn_L: True  
+  pts_per_interv: 150
+  num_steps: 10000
+  off_wandb: True
+  L_KL: False
+  P_KL: False
+  learn_L: True 
+  learn_Z: True
+  learn_intervs: False
 
 linear_vector_multi_interv_learn_L:
   exp_name: 'BIOLS linear multi interventional learn L'
   interv_type: 'multi'
   proj: 'linear'
-  num_nodes: 20
+  num_nodes: 5
   exp_edges: 1.0
   proj_dims: 100
-  data_seed: 1
-  obs_data: 500
-  n_interv_sets: 800
+  data_seed: 0
+  obs_data: 2000
+  n_interv_sets: 20
   pts_per_interv: 100
-  num_steps: 3000
-  learn_L: False 
+  num_steps: 10000
   off_wandb: True
-  
+  L_KL: False
+  P_KL: False
+  learn_L: True
+  learn_Z: False
+  learn_intervs: False
+  datagen_type: 'default'
+
+
+SON_vector_GTInterv_single_target_learn_L:
+  exp_name: 'BIOLS SON single-target learn L'
+  interv_type: 'single'
+  proj: 'SON'
+  learn_Z: True
+  num_nodes: 3
+  proj_dims: 3
+  exp_edges: 1.0
+  data_seed: 0
+  obs_data: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  off_wandb: False
+  L_KL: False
+  P_KL: False
+  learn_P: False
+  learn_L: True 
+  learn_intervs: False
+  datagen_type: 'weakly_supervised'
+
+
+SON_vector_GTInterv_multi_target_learn_L:
+  exp_name: 'BIOLS SON multi-target learn L'
+  interv_type: 'multi'
+  proj: 'SON'
+  learn_Z: True
+  num_nodes: 15
+  proj_dims: 15
+  exp_edges: 1.0
+  data_seed: 1
+  obs_data: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 10000
+  off_wandb: True
+  L_KL: False
+  P_KL: False
+  learn_P: False
+  learn_L: True 
+  learn_intervs: False
+  datagen_type: 'weakly_supervised'
+
 
 
 # ! Exp 2B. Batched Learn SCM linear BIOLS
@@ -115,14 +316,15 @@ batched_linear_vector_multi_interv_learn_SCM:
   num_nodes: 10
   exp_edges: 1.0
   proj_dims: 100
-  data_seed: 19
-  num_steps: 3000
+  data_seed: 0
+  num_steps: 10000
   obs_data: 500
   n_interv_sets: 100
   pts_per_interv: 100
-  batches: 21000
+  batches: 15000
   learn_L: True
   learn_P: True
+  off_wandb: False
 
 
 
@@ -161,13 +363,17 @@ nonlinear_vector_multi_interv_learn_L:
   num_nodes: 10
   exp_edges: 1.0
   proj_dims: 100
-  data_seed: 1
+  data_seed: 0
   obs_data: 500
-  n_interv_sets: 50
+  n_interv_sets: 20
   pts_per_interv: 100
-  num_steps: 2000
+  num_steps: 3000
   learn_L: True 
   L_KL: False
+  min_interv_value: -5.
+  max_interv_value: 5.
+  off_wandb: False
+
 
 
 # ! Exp 5. Learn L Conv. BIOLS
@@ -337,12 +543,34 @@ batched_nonlinear_vector_multi_interv_learn_SCM:
   exp_edges: 1.0
   proj_dims: 100
   data_seed: 2
-  num_steps: 3000
+  num_steps: 10000
   obs_data: 500
-  n_interv_sets: 200
+  n_interv_sets: 20
   pts_per_interv: 100
   batches: 10000
   learn_L: True
   learn_P: True
   L_KL: False
   P_KL: False
+  off_wandb: False
+  min_interv_value: -5.
+  max_interv_value: 5.
+
+nonlinear_vector_multi_interv_learn_SCM:
+  exp_name: 'BIOLS nonlinear multi interventional learn SCM'
+  interv_type: 'multi'
+  proj: '3_layer_mlp'
+  num_nodes: 5
+  exp_edges: 1.0
+  proj_dims: 200
+  data_seed: 5
+  obs_data: 500
+  n_interv_sets: 20
+  pts_per_interv: 100
+  num_steps: 5000
+  learn_L: True 
+  learn_P: True
+  off_wandb: False
+  min_interv_value: -12.
+  max_interv_value: 12.
+

@@ -4,7 +4,7 @@ sys.path.append('..')
 from typing import cast
 import haiku as hk
 
-import jax
+import jax, pdb
 import jax.numpy as jnp
 import jax.random as rnd
 from jax import vmap, random
@@ -14,16 +14,27 @@ from modules.GumbelSinkhorn import GumbelSinkhorn
 
 
 class BIOLS(hk.Module):
-    def __init__(self, d, posterior_samples, eq_noise_var, tau, hidden_size, 
-                max_deviation, learn_P, proj_dims, proj, log_stds_max=10.0, 
+    def __init__(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, 
+                proj_dims, interv_value_sampling, no_interv_noise, log_stds_max=10.0, 
                 logit_constraint=10, P=None):
         """
             The BIOLS model to estimate SCM from vector data
         """
         super().__init__()
-        self._set_vars(d, posterior_samples, eq_noise_var, tau,
-                        hidden_size, max_deviation, learn_P, 
-                        log_stds_max, logit_constraint, proj_dims, P)
+        self._set_vars(
+            d, 
+            posterior_samples, 
+            tau,
+            hidden_size, 
+            max_deviation, 
+            learn_P, 
+            no_interv_noise,
+            log_stds_max, 
+            logit_constraint,
+            proj_dims, 
+            interv_value_sampling,
+            P
+        )
         
         if self.learn_P:
             self.p_logits_model = hk.Sequential([
@@ -34,41 +45,39 @@ class BIOLS(hk.Module):
                             ])
 
         self.ds = GumbelSinkhorn(self.d, noise_type="gumbel", tol=max_deviation)
-        
-        if proj == 'linear':
-            self.decoder = hk.Sequential([
-                hk.Flatten(), hk.Linear(proj_dims, with_bias=False)
-            ])
-        else:
-            self.decoder = hk.Sequential([
-                    hk.Flatten(), 
-                    hk.Linear(16, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(64, with_bias=False), jax.nn.gelu,
-                    hk.Linear(proj_dims, with_bias=False)
-                ])
 
-    def _set_vars(self, d, posterior_samples, eq_noise_var, tau,
-                    hidden_size, max_deviation, learn_P, log_stds_max, 
-                    logit_constraint, proj_dims, P=None):
+        means = jnp.zeros((d,))
+        self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * 0.5)
+
+        self.decoder = hk.Sequential([
+                hk.Flatten(), 
+                hk.Linear(16, with_bias=False), jax.nn.gelu,
+                hk.Linear(64, with_bias=False), jax.nn.gelu,
+                hk.Linear(64, with_bias=False), jax.nn.gelu,
+                hk.Linear(64, with_bias=False), jax.nn.gelu,
+                hk.Linear(proj_dims, with_bias=False)
+            ])
+        self.pred_sigma = 1.0
+
+    def _set_vars(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, no_interv_noise, 
+                log_stds_max, logit_constraint, proj_dims, interv_value_sampling, P=None):
         """
             Sets important variables/attributes for this class.
         """
         self.d = d
         self.l_dim = d * (d - 1) // 2
         self.posterior_samples = posterior_samples
-        self.eq_noise_var = eq_noise_var
         self.tau = tau
         self.hidden_size = hidden_size
         self.max_deviation = max_deviation
         self.learn_P = learn_P
+        self.no_interv_noise = no_interv_noise
         self.log_stds_max = log_stds_max
         self.logit_constraint = logit_constraint
         self.proj_dims = proj_dims
         self.P = P
-        if eq_noise_var:    self.noise_dim = 1
-        else:               self.noise_dim = d
+        self.interv_value_sampling = interv_value_sampling
+        self.noise_dim = d
 
     def lower(self, theta):
         """
@@ -108,8 +117,7 @@ class BIOLS(hk.Module):
     def sample_L_and_Σ(self, rng_key, LΣ_params):
         """
             Performs sampling (L, Σ) ~ q_ϕ(L, Σ) 
-                where q_ϕ is a Normal if self.eq_noise_var is True
-                else q_ϕ is a Normalizing Flow (not implemented)
+                where q_ϕ is a Normal
             L has d * (d - 1) / 2 terms
             Σ is a single term referring to noise variance on each node 
             
@@ -144,7 +152,7 @@ class BIOLS(hk.Module):
         full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(self.posterior_samples,))
         full_l_batch = cast(jnp.ndarray, full_l_batch)
 
-        # log likelihood for q_ϕ(L, Σ)
+        # log prob for q_ϕ(L, Σ)
         full_log_prob_l = jnp.sum(l_distribution.log_prob(full_l_batch), axis=1)  
         full_log_prob_l = cast(jnp.ndarray, full_log_prob_l)
         return full_l_batch, full_log_prob_l
@@ -257,13 +265,21 @@ class BIOLS(hk.Module):
         
         # Getting exogenous noise vector \epsilon = {\epsilon_1, ... \epsilon_d}, from eps_std
         noise_terms = jnp.multiply(eps_std, random.normal(rng_key, shape=(self.d,)))
+        rng_key, _ = random.split(rng_key, 2)
+        
+        if self.no_interv_noise is False:
+            interv_noise = self.interv_noise_dist.sample(seed=rng_key, sample_shape=(1,)) # (d, )
+            interv_noise = jnp.concatenate((interv_noise[0], jnp.zeros((1,))), axis=0)
+        else:
+            interv_noise = jnp.zeros_like(interv_values)
 
         # Traverse node topologically and ancestral sample
         for j in swapped_ordering:
             mean = sample[:-1] @ W[:, j]
             sample = sample.at[j].set(mean + noise_terms[j])
-            sample = sample.at[interv_target].set(interv_values[interv_target]) 
-
+            sample = sample.at[interv_target].set(interv_values[interv_target])
+            sample = sample.at[interv_target].set(interv_values[interv_target] + interv_noise[interv_target])
+        
         return sample[:-1]
 
     def ancestral_sample(self, rng_key, W, P, eps_std, interv_targets, interv_values):
@@ -387,6 +403,7 @@ class BIOLS(hk.Module):
         
         # z ~ q(Z | P, L, Σ)
         vmapped_ancestral_sample = vmap(self.ancestral_sample, (0, 0, 0, 0, None, None), (0))
+        
         batched_qz_samples = vmapped_ancestral_sample(  
                                                         rng_keys,
                                                         W_samples,
@@ -398,7 +415,7 @@ class BIOLS(hk.Module):
 
         # Stochastic decoder -> causal variables z to predict x                                  
         Mu_X = vmap(self.decoder, (0), (0))(batched_qz_samples) # (posterior_samples, n, proj_dims)
-        pred_X = Mu_X + jnp.multiply(1.0, random.normal(rng_key, shape=(Mu_X.shape)))
+        pred_X = Mu_X + jnp.multiply(self.pred_sigma, random.normal(rng_key, shape=(Mu_X.shape)))
 
         return (pred_X, P_samples, batched_P_logits, batched_qz_samples, full_l_batch, 
                 full_log_prob_l, L_samples, W_samples, log_noise_std_samples)

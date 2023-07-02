@@ -1,12 +1,13 @@
 import logging
 import numpy as np
 import networkx as nx
+import pdb
 
 class SyntheticSCM(object):
     _logger = logging.getLogger(__name__)
 
-    def __init__(self, n, d, graph_type, degree, sem_type, sigmas,
-        dataset_type="linear", quadratic_scale=None, data_seed=0):
+    def __init__(self, d, graph_type, degree, sem_type, sigmas,
+        dataset_type="linear", quadratic_scale=None, data_seed=0, identity_perm=False):
         """
             SyntheticSCM class to instantiate a linear Gaussian additive 
             noise SCM that consists of:
@@ -19,7 +20,6 @@ class SyntheticSCM(object):
 
             The created DAG, if ER, is an ER-{degree} DAG.
         """
-        self.n = n
         self.d = d
         self.graph_type = graph_type
         self.degree = degree 
@@ -29,23 +29,27 @@ class SyntheticSCM(object):
         self.quadratic_scale = quadratic_scale
         self.data_seed = data_seed
         self.sigmas = sigmas
-
+        self.identity_perm = identity_perm
+    
         self._setup()
         self._logger.debug("Finished setting up dataset class")
 
     def _setup(self):
         self.W, self.W_2, self.P = SyntheticSCM.simulate_random_dag(
-            self.d, self.degree, self.graph_type, self.w_range, self.data_seed, (self.dataset_type != "linear"))
+            self.d, 
+            self.degree, 
+            self.graph_type, 
+            self.w_range, 
+            self.data_seed, 
+            (self.dataset_type != "linear"),
+            self.identity_perm)
 
         if self.dataset_type != "linear":
             assert self.W_2 is not None
             self.W_2 = self.W_2 * self.quadratic_scale
 
-        self.X = SyntheticSCM.simulate_sem(self.W, self.n, self.sem_type, self.w_range, 
-                                            self.dataset_type, self.W_2, self.sigmas)
-
     @staticmethod
-    def simulate_random_dag(d, degree, graph_type, w_range, data_seed, return_w_2=False):
+    def simulate_random_dag(d, degree, graph_type, w_range, data_seed, return_w_2=False, identity_perm=False):
         """Simulate random DAG with some expected degree.
         Args:
             d: number of nodes
@@ -78,7 +82,9 @@ class SyntheticSCM(object):
         else:
             raise ValueError("Unknown graph type")
         
-        P = np.random.permutation(np.eye(d, d))  # random permutation
+        P = np.eye(d, d)
+        if identity_perm is False:
+            P = np.random.permutation(P)  # random permutation
         B_perm = P.T.dot(B).dot(P)
 
         U = np.random.uniform(low=w_range[0], high=w_range[1], size=[d, d])
@@ -101,35 +107,9 @@ class SyntheticSCM(object):
             return W.T, None, P.T
 
     @staticmethod
-    def simulate_gaussian_dag(d, degree, graph_type, w_std):
-        """Simulate dense DAG adjacency matrix
-        Args:
-            d: number of nodes
-            degree: expected node degree, in + out
-            graph_type: {erdos-renyi, barabasi-albert, full}
-            w_range: weight range +/- (low, high)
-            return_w_2: boolean, whether to return an additional
-                weight matrix used for quadratic terms
-        Returns:
-            W: weighted DAG
-            [Optional] W: weighted DAG with same occupancy but different weights
-        """
-        lower_entries = np.random.normal(loc=0.0, scale=w_std, size=(d * (d - 1) // 2))
-        L = np.zeros((d, d))
-        # We want the ground-truth W.T to be generated from PLP^\top
-        # This is since we encode W.T as PLP^\top in the approach.
-        L[np.tril_indices(d, -1)] = lower_entries
-        P = np.random.permutation(np.eye(d, d))  # permutes first axis only
-        W = (P @ L @ P.T).T
-        return W, None, P, L
-
-    @staticmethod
     def simulate_sem(
         W, n,
         sem_type,
-        w_range=None,
-        dataset_type="nonlinear_1",
-        W_2=None,
         sigmas=None,
     ) -> np.ndarray:
         """Simulate samples from SEM withsample specified type of noise.
@@ -146,27 +126,52 @@ class SyntheticSCM(object):
 
         ordered_vertices = list(nx.topological_sort(G))
         assert len(ordered_vertices) == d
+        
         for j in ordered_vertices:
             parents = list(G.predecessors(j))
-            if dataset_type == "linear":
-                eta = X[:, parents].dot(W[parents, j])
-            elif dataset_type == "quadratic":
-                eta = X[:, parents].dot(W[parents, j]) + (X[:, parents] ** 2).dot(
-                    W_2[parents, j]
-                )
-            else:
-                raise ValueError("Unknown dataset type")
-
+            eta = X[:, parents].dot(W[parents, j])
             if sem_type == "linear-gauss":
                 X[:, j] = eta + np.random.normal(scale=sigmas[j], size=n)
-            elif sem_type == "linear-exp":
-                X[:, j] = eta + np.random.exponential(scale=sigmas[j], size=n)
-            elif sem_type == "linear-gumbel":
-                X[:, j] = eta + np.random.gumbel(scale=sigmas[j], size=n)
-            else:
-                raise ValueError("Unknown sem type")
 
         return X
+
+    def sample_z_given_noise(self, noise, W, sem_type, interv_targets=None, interv_noise=None, 
+        interv_values=None, edge_threshold=0.3):
+        """
+            TODO
+        """
+        assert edge_threshold == 0.3
+
+        if interv_targets is None:
+            interv_targets = np.zeros_like(noise)
+        
+        if interv_noise is None:
+            interv_noise = np.zeros_like(noise)
+        
+        if interv_values is None:
+            interv_values = np.zeros_like(noise)
+
+        graph_structure = np.where(np.abs(W) < edge_threshold, 0, 1)
+        W = np.multiply(W, graph_structure)
+
+        G = nx.DiGraph(W)
+        n, d = noise.shape
+        Z = np.zeros([n, d], dtype=np.float64)
+        ordered_vertices = list(nx.topological_sort(G))
+        assert len(ordered_vertices) == d
+
+        for j in ordered_vertices:
+            Z[:, j] = (interv_values[:, j] + interv_noise[:, j]) * interv_targets[:, j].astype(int)
+            non_interventions_mask = 1.0 - interv_targets[:, j].astype(int)
+            parents = list(G.predecessors(j))
+            if sem_type == "linear-gauss":
+                eta = Z[:, parents].dot(W[parents, j])
+                Z[:, j] += (eta + noise[:, j]) * non_interventions_mask
+            
+            else:
+                raise ValueError
+        
+        return Z
 
     @staticmethod
     def intervene_sem(
