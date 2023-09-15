@@ -4,8 +4,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=6
 
-seeds=(0 3)
-lr=0.0001
+seeds=(0)
+lr=0.00005
 num_steps=2000
 off_wandb='False'
 

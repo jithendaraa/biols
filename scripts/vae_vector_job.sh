@@ -18,10 +18,10 @@ echo "Script"
 module load anaconda/3
 conda activate biols
 echo `date` "Python starting"
-echo "python vae_vector_baseline.py --config defaults vae_linear_baseline --biols_data_folder ${biols_data_folder} --data_seed ${seed}  --lr ${lr} --num_steps ${num_steps} --off_wandb ${off_wandb}"
+echo "python vae_vector_baseline.py --config defaults vae_linear_baseline --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --num_steps ${num_steps} --off_wandb ${off_wandb}"
 
 cd exps
-python vae_vector_baseline.py --config defaults vae_linear_baseline --biols_data_folder ${biols_data_folder} --data_seed ${seed}  --lr ${lr} --num_steps ${num_steps} --off_wandb ${off_wandb}
+python vae_vector_baseline.py --config defaults vae_linear_baseline --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --num_steps ${num_steps} --off_wandb ${off_wandb}
 cd ..
 
 echo $end

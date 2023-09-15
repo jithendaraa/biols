@@ -4,7 +4,7 @@ sys.path.append("..")
 sys.path.append("../modules")
 
 from os.path import join
-pathlib
+import pathlib
 import ruamel.yaml as yaml
 from tqdm import tqdm
 

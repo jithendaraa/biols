@@ -30,30 +30,15 @@ son_d5:
 d10:
   num_nodes: 10
   proj_dims: 100
-  n_pairs: 2000
-  n_interv_sets: 20
+  n_pairs: 4000
+  n_interv_sets: 40
   pts_per_interv: 100
 
 son_d10:
   num_nodes: 10
   proj_dims: 10
-  n_pairs: 2000
-  n_interv_sets: 20
-  pts_per_interv: 100
-  proj: 'SON'
-  
-d20:
-  num_nodes: 20
-  proj_dims: 100
-  n_pairs: 5000
-  n_interv_sets: 50
-  pts_per_interv: 100
-
-son_d20:
-  num_nodes: 20
-  proj_dims: 20
-  n_pairs: 5000
-  n_interv_sets: 50
+  n_pairs: 4000
+  n_interv_sets: 40
   pts_per_interv: 100
   proj: 'SON'
 
@@ -104,13 +89,19 @@ nonlinear_proj:
 multi_interv:
   interv_type: 'multi'
 
-single_interv:
+single_zeros_interv:
   interv_type: 'single'
-
-zero_intervs:
   interv_value_sampling: 'zeros'
 
-gaussian_intervs:
+single_gaussian_interv:
+  interv_type: 'single'
   interv_value_sampling: 'gaussian'
 
+multi_gaussian_interv:
+  interv_type: 'multi'
+  interv_value_sampling: 'gaussian'
+
+multi_zeros_interv:
+  interv_type: 'multi'
+  interv_value_sampling: 'zeros'
 

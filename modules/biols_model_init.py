@@ -1,17 +1,25 @@
 import sys
 sys.path.append('../models')
 
-from jax import jit
+
 import jax.numpy as jnp
 import numpy as onp
 import haiku as hk
-import optax, pdb
+import optax
 from jax.flatten_util import ravel_pytree
 
 from BIOLS import BIOLS
 from BIOLS_Interv import BIOLS_Interv
 from BIOLS_Image import BIOLS_Image
 from Generative_BIOLS_Interv import GenerativeBIOLS_Interv
+from collections import namedtuple
+
+
+Parameters = namedtuple('Parameters', ['LΣ', 'model'])
+Optimizers = namedtuple('Optimizers', ['LΣ', 'model'])
+OptimizerState = namedtuple('OptimizerState', ['LΣ', 'model'])
+
+
 
 def biols_interv_forward_fn(hard, rng_key, opt, X, interv_targets, 
         interv_values, LΣ_params, P=None, L=None, learn_intervs=True):
@@ -147,7 +155,7 @@ def init_generative_interv_model(hk_key, hard, rng_key, opt, interv_targets, int
     return forward, params, opt_params, optimizers
 
 
-def forward_fn(hard, rng_key, opt, interv_targets, interv_values, LΣ_params, P=None):
+def forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
     model = BIOLS(
         opt.num_nodes, 
         opt.posterior_samples, 
@@ -160,13 +168,14 @@ def forward_fn(hard, rng_key, opt, interv_targets, interv_values, LΣ_params, P=
         opt.no_interv_noise,
         log_stds_max=opt.log_stds_max,
         logit_constraint=opt.logit_constraint,
-        P=P
+        P=P,
+        pred_sigma=opt.pred_sigma
     )
 
-    return model(rng_key, interv_targets, interv_values, LΣ_params, hard)
+    return model(rng_key, interventions.labels, interventions.values, LΣ_params, hard)
 
 
-def init_model(key, hard, rng_key, opt, interv_targets, interv_values, l_dim, noise_dim, P=None):
+def init_model(key, rng_key, opt, interventions, l_dim, noise_dim, P=None):
     """
         Initialize model, parameters, and optimizer states
     """
@@ -176,16 +185,20 @@ def init_model(key, hard, rng_key, opt, interv_targets, interv_values, l_dim, no
     
     opt_model = optax.chain(*model_layers)
     opt_LΣ = optax.chain(*LΣ_layers)
-    LΣ_params = jnp.concatenate((jnp.zeros(l_dim), jnp.zeros(noise_dim), jnp.zeros(l_dim + noise_dim) - 1)).astype(jnp.float32)
     
-    next_key = next(key)
-    model_params = forward.init(next_key, hard, rng_key, opt, interv_targets, interv_values, LΣ_params, P)
-    model_opt_params = opt_model.init(model_params)
-    LΣ_opt_params = opt_LΣ.init(LΣ_params)
+    LΣ_params = jnp.concatenate((jnp.zeros(l_dim), jnp.zeros(noise_dim), jnp.zeros(l_dim + noise_dim) - 1)).astype(jnp.float32)
+    model_params = forward.init(next(key), False, rng_key, opt, interventions, LΣ_params, P)
 
-    print(f"L and Σ has {ff2(num_params(LΣ_params))} parameters")
-    print(f"Model has {ff2(num_params(model_params))} parameters")
-    return forward, model_params, LΣ_params, model_opt_params, LΣ_opt_params, opt_model, opt_LΣ
+    model_opt_state = opt_model.init(model_params)
+    LΣ_opt_state = opt_LΣ.init(LΣ_params)
+    
+    params = Parameters(LΣ=LΣ_params, model=model_params)
+    optimizers = Optimizers(LΣ=opt_LΣ, model=opt_model)
+    opt_state = OptimizerState(LΣ=LΣ_opt_state, model=model_opt_state)
+
+    print(f"L and Σ has {ff2(num_params(params.LΣ))} parameters")
+    print(f"Model has {ff2(num_params(params.model))} parameters")
+    return forward, params, optimizers, opt_state
 
 
 def image_forward_fn(hard, proj_dims, rng_key, opt, interv_targets, interv_values, LΣ_params, P=None):

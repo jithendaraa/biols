@@ -54,6 +54,7 @@ transformer:
   nhead: 4
   num_data_seeds: 1000
 
+
 # Encoder BIOLS
 encoder_BIOLS_linear:
   exp_name: 'Encoder BIOLS STI learn L SON'

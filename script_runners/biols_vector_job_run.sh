@@ -2,10 +2,10 @@
 
 biols_data_folder=$1
 time=$2
-learn_P='True'
+learn_P='False'
 config="BIOLS-learnP(${learn_P})-${biols_data_folder}"
 
-seeds=(1)
+seeds=(0 1 2 3 4)
 array_len=$(( ${#seeds[@]} ))
 echo $array_len
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 exp_id=$1   
-data_config=${2:-'er1-ws_datagen_fix_noise_interv_noise-SONproj-d005-D0005-multi-n_pairs2000-sets20-gaussianinterv'}
+data_config=${2:-'er1-ws_datagen_fix_noise_interv_noise-3_layer_mlpproj-d005-D0100-single-n_pairs2000-sets20-zerosinterv'}
 
-def_time='5:00:00'
+def_time='3:00:00'
 time=${3:-$def_time}
 
 
@@ -29,7 +29,6 @@ then
 elif [ ${exp_id} == '6' ] # ! gin baseline
 then
     bash script_runners/gin_baseline_job_run.sh ${dataset} ${train} 'GIN Baseline' ${time} ${config}
-
 elif [ ${exp_id} == '7' ]
 then
     bash script_runners/interv_biols_vector_job_run.sh ${dataset} 'BIOLS' ${time} ${config}
@@ -37,5 +36,4 @@ then
 elif [ ${exp_id} == '8' ]
 then
     bash script_runners/weakly_sup_biols_vector_job_run.sh ${dataset} 'BIOLS' ${time} ${config}
-
 fi

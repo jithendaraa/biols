@@ -1,9 +1,10 @@
 defaults:
-  lr: 0.0003
+  lr: 0.0006
   logdir: 'logs'
   min_interv_value: -5.
   max_interv_value: 5.
-  log_stds_max: 10.0
+  log_stds_max: 5.0
+  s_prior_std: 3.0
   posterior_samples: 64
   hidden_size: 128
   fixed_tau: 0.2
@@ -25,17 +26,13 @@ defaults:
   wandb_entity: 'structurelearning'
   off_wandb: False
   learn_P: False
+  pred_sigma: 1.0
 
   # Remove later
   decoder_sigma: 0.1
   sem_type: 'linear-gauss'
   graph_type: 'erdos-renyi'
 
-learn_SCM: 
-  learn_P: True
-
-learn_L:
-  learn_P: False
 
 gaussian_interv_sampling:
   interv_value_sampling: 'uniform'
@@ -55,17 +52,15 @@ biols_fix_noise_interv_noise_multi_interv_gaussian_interv:
   no_interv_noise: False 
   biols_data_folder: 'er1-ws_datagen_nofix_noise_interv_noise-SONproj-d005-D0005-multi-n_pairs2000-sets20-gaussianinterv-non_eq_noise_var'
 
+
 biols_learn_L:
   exp_name: 'BIOLS_learnL'
-  interv_type: 'multi'
-  data_seed: 0
-  num_steps: 20000
+  num_steps: 10000
   learn_P: False
+
 
 biols_learn_P:
   exp_name: 'BIOLS_learnSCM'
-  interv_type: 'multi'
-  data_seed: 0
   num_steps: 20000
   learn_P: True
 

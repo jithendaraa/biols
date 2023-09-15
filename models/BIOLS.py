@@ -8,19 +8,22 @@ import jax, pdb
 import jax.numpy as jnp
 import jax.random as rnd
 from jax import vmap, random
+from collections import namedtuple
 
-from tensorflow_probability.substrates.jax.distributions import Normal, Horseshoe
+from tensorflow_probability.substrates.jax.distributions import Normal
 from modules.GumbelSinkhorn import GumbelSinkhorn
 
+PredSamples = namedtuple('PredSamples', ['W', 'P', 'L', 'z', 'x'])
 
 class BIOLS(hk.Module):
     def __init__(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, 
-                proj_dims, interv_value_sampling, no_interv_noise, log_stds_max=10.0, 
-                logit_constraint=10, P=None):
+                proj_dims, interv_value_sampling, no_interv_noise, log_stds_max=5.0, 
+                logit_constraint=10, P=None, pred_sigma=1.0):
         """
             The BIOLS model to estimate SCM from vector data
         """
         super().__init__()
+        
         self._set_vars(
             d, 
             posterior_samples, 
@@ -33,7 +36,8 @@ class BIOLS(hk.Module):
             logit_constraint,
             proj_dims, 
             interv_value_sampling,
-            P
+            P,
+            pred_sigma
         )
         
         if self.learn_P:
@@ -45,10 +49,8 @@ class BIOLS(hk.Module):
                             ])
 
         self.ds = GumbelSinkhorn(self.d, noise_type="gumbel", tol=max_deviation)
-
         means = jnp.zeros((d,))
         self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * 0.5)
-
         self.decoder = hk.Sequential([
                 hk.Flatten(), 
                 hk.Linear(16, with_bias=False), jax.nn.gelu,
@@ -57,10 +59,10 @@ class BIOLS(hk.Module):
                 hk.Linear(64, with_bias=False), jax.nn.gelu,
                 hk.Linear(proj_dims, with_bias=False)
             ])
-        self.pred_sigma = 1.0
+        
 
     def _set_vars(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, no_interv_noise, 
-                log_stds_max, logit_constraint, proj_dims, interv_value_sampling, P=None):
+                log_stds_max, logit_constraint, proj_dims, interv_value_sampling, P=None, pred_sigma=1.):
         """
             Sets important variables/attributes for this class.
         """
@@ -78,6 +80,7 @@ class BIOLS(hk.Module):
         self.P = P
         self.interv_value_sampling = interv_value_sampling
         self.noise_dim = d
+        self.pred_sigma = pred_sigma
 
     def lower(self, theta):
         """
@@ -126,21 +129,22 @@ class BIOLS(hk.Module):
                 rng_key: DeviceArray
                     Random number generator key
 
-                LΣ_params:  jnp.ndarray (d*(d-1) + 2, )
+                LΣ_params:  jnp.ndarray (d*(d-1) + 2d, )
                     Contains mean and std for Σ and edges in L.  
                     Shape (d*(d-1) + 2d, ) if we are inferring for non-equal noise variance (not implemented)
                 
             Results
             -------
-                full_l_batch: jnp.ndarray (batch_size, 1 + d(d-1)/2)
+                full_l_batch: jnp.ndarray (batch_size, d + d(d-1)/2)
                     Contains `batch_size` samples of concatenated(L_i, Σ_i) from the 
                     posterior q(L, Σ).
 
-                full_log_prob_l: jnp.ndarray (batch_size, )
+                LΣ_posterior_logprobs: jnp.ndarray (batch_size, )
                     Log prob of each (L_i, Σ_i) sample under the posterior q(L, Σ)
                     across samples.
         """
-        LΣ_params = cast(jnp.ndarray, LΣ_params)
+        LΣ_params = LΣ_params.astype(jnp.float64)
+        
         # Obtain mean and covariance of the Normal distribution to sample L and Σ from
         means, log_stds = LΣ_params[:self.l_dim + self.noise_dim], LΣ_params[self.l_dim + self.noise_dim :]
         if self.log_stds_max is not None:    
@@ -150,12 +154,10 @@ class BIOLS(hk.Module):
         # Sample (L, Σ) from the Normal
         l_distribution = Normal(loc=means, scale=jnp.exp(log_stds))
         full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(self.posterior_samples,))
-        full_l_batch = cast(jnp.ndarray, full_l_batch)
 
         # log prob for q_ϕ(L, Σ)
-        full_log_prob_l = jnp.sum(l_distribution.log_prob(full_l_batch), axis=1)  
-        full_log_prob_l = cast(jnp.ndarray, full_log_prob_l)
-        return full_l_batch, full_log_prob_l
+        LΣ_posterior_logprobs = jnp.sum(l_distribution.log_prob(full_l_batch), axis=1)  
+        return full_l_batch, LΣ_posterior_logprobs
 
     def get_P_logits(self, LΣ_samples):
         """
@@ -324,7 +326,7 @@ class BIOLS(hk.Module):
         samples = vmap(self.eltwise_ancestral_sample, (None, None, None, 0, 0, 0), (0))(W, P, eps_std, rng_keys, interv_targets, interv_values)
         return samples
 
-    def __call__(self, rng_key, interv_targets, interv_values, LΣ_params, hard):
+    def __call__(self, rng_key, interv_labels, interv_values, LΣ_params, hard):
         """
             Forward pass of BIOLS:
                 1. Draw (L_i, Σ_i) ~ q_ϕ(L, Σ) 
@@ -338,14 +340,14 @@ class BIOLS(hk.Module):
                 rng_key: DeviceArray
                     Random number generator key
 
-                interv_targets: jnp.ndarray (n, max_intervs)
+                interv_labels: jnp.ndarray (n, max_intervs)
                     max_intervs refers to maximum number of nodes intervened on
                     in any one sample of the dataset, i.e, any X^{i}. 
 
                 interv_values: jnp.ndarray (n, d)
-                    For every intervened node, or every interv_targets[i][j], 
-                    interv_values[i, interv_targets[i][j]] contains the value of intervention
-                    for node interv_targets[i][j].
+                    For every intervened node, or every interv_labels[i][j], 
+                    interv_values[i, interv_labels[i][j]] contains the value of intervention
+                    for node interv_labels[i][j].
 
                 LΣ_params:  jnp.ndarray (d*(d-1) + 2, )
                     Contains mean and std for edges in L and the noise_sigma we are inferring over
@@ -374,7 +376,7 @@ class BIOLS(hk.Module):
                     Contains `batch_size` samples of concatenated(L_i, Σ_i) from the 
                     posterior q(L, Σ).
                 
-                full_log_prob_l: jnp.ndarray (batch_size, )
+                LΣ_posterior_logprobs: jnp.ndarray (batch_size, )
                     Log prob of each (L_i, Σ_i) sample under the posterior q(L, Σ)
                     across samples.
 
@@ -390,12 +392,12 @@ class BIOLS(hk.Module):
                     Σ_i as diag(exp(2 * log sigma_i)) 
         """
         # Draw (L, Σ) ~ q_ϕ(L, Σ) 
-        full_l_batch, full_log_prob_l = self.sample_L_and_Σ(rng_key, LΣ_params)
-        log_noise_std_samples = full_l_batch[:, -self.noise_dim:]  # (posterior_samples, 1)
-        L_samples = vmap(self.lower, in_axes=(0))(full_l_batch[:,  :self.l_dim]) # (posterior_samples, d, d)
+        LΣ_samples, LΣ_posterior_logprobs = self.sample_L_and_Σ(rng_key, LΣ_params)
+        log_noise_std_samples = LΣ_samples[:, -self.noise_dim:]  # (posterior_samples, 1)
+        L_samples = vmap(self.lower, in_axes=(0))(LΣ_samples[:,  :self.l_dim]) # (posterior_samples, d, d)
 
         # Draw P ~ q_ϕ(P | L, Σ) if we are learning P, else use GT value
-        P_samples, batched_P_logits = self.get_P(rng_key, full_l_batch, hard) # (posterior_samples, d, d) 
+        P_samples, batched_P_logits = self.get_P(rng_key, LΣ_samples, hard) # (posterior_samples, d, d) 
 
         # W = (PLP.T).T for every posterior sample of (P, L) 
         W_samples = vmap(self.sample_W, (0, 0), (0))(L_samples, P_samples)  # (posterior_samples, d, d)
@@ -409,7 +411,7 @@ class BIOLS(hk.Module):
                                                         W_samples,
                                                         P_samples,
                                                         jnp.exp(log_noise_std_samples),
-                                                        interv_targets,
+                                                        interv_labels,
                                                         interv_values
                                                     )
 
@@ -417,5 +419,5 @@ class BIOLS(hk.Module):
         Mu_X = vmap(self.decoder, (0), (0))(batched_qz_samples) # (posterior_samples, n, proj_dims)
         pred_X = Mu_X + jnp.multiply(self.pred_sigma, random.normal(rng_key, shape=(Mu_X.shape)))
 
-        return (pred_X, P_samples, batched_P_logits, batched_qz_samples, full_l_batch, 
-                full_log_prob_l, L_samples, W_samples, log_noise_std_samples)
+        pred_samples = PredSamples(W_samples, P_samples, L_samples, batched_qz_samples, pred_X)
+        return (pred_samples, batched_P_logits, LΣ_samples, LΣ_posterior_logprobs, log_noise_std_samples)
