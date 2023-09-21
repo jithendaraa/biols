@@ -147,6 +147,7 @@ class BIOLS(hk.Module):
         
         # Obtain mean and covariance of the Normal distribution to sample L and Σ from
         means, log_stds = LΣ_params[:self.l_dim + self.noise_dim], LΣ_params[self.l_dim + self.noise_dim :]
+        
         if self.log_stds_max is not None:    
             # cap log_stds to (-self.log_stds_max, log_stds_max), so that std = exp(log_stds) doesn't explode.
             log_stds = jnp.tanh(log_stds / self.log_stds_max) * self.log_stds_max 

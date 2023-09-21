@@ -11,13 +11,22 @@ create_dataset:
   sem_type: 'linear-gauss'
   baseroot: '/home/mila/j/jithendaraa.subramanian'
   edge_threshold: 0.3
+  clamp_low: -8.
+  clamp_high: 8.
 
 d5:
   num_nodes: 5
   proj_dims: 100
-  n_pairs: 2000
   n_interv_sets: 20
   pts_per_interv: 100
+  n_pairs: 2000
+
+d10:
+  num_nodes: 10
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
 
 son_d5:
   num_nodes: 5
@@ -27,13 +36,6 @@ son_d5:
   pts_per_interv: 100
   proj: 'SON'
 
-d10:
-  num_nodes: 10
-  proj_dims: 100
-  n_pairs: 4000
-  n_interv_sets: 40
-  pts_per_interv: 100
-
 son_d10:
   num_nodes: 10
   proj_dims: 10
@@ -41,6 +43,22 @@ son_d10:
   n_interv_sets: 40
   pts_per_interv: 100
   proj: 'SON'
+
+linear_proj:
+  proj: 'linear'
+
+nonlinear_proj:
+  proj: '3_layer_mlp'
+
+chemdata_proj:
+  proj: 'chemdata'
+  proj_dims: 2500
+  dataset: 'chemdata'
+
+default_datagen_no_interv_noise_no_fix_noise:
+  datagen_type: 'default'
+  no_interv_noise: True
+  fix_noise: False
 
 # Exactly intervention value; noise for z1 and z2 is same
 ws_datagen_no_interv_noise_fix_noise:
@@ -65,9 +83,6 @@ ws_datagen_interv_noise_nofix_noise:
   no_interv_noise: False
   fix_noise: False
 
-default_datagen:
-  datagen_type: 'default'
-
 er1: 
   exp_edges: 1.0
   graph_type: 'erdos-renyi'
@@ -80,28 +95,15 @@ er4:
   exp_edges: 4.0
   graph_type: 'erdos-renyi'
 
-linear_proj:
-  proj: 'linear'
-
-nonlinear_proj:
-  proj: '3_layer_mlp'
+single_interv:
+  interv_type: 'single'
 
 multi_interv:
   interv_type: 'multi'
 
-single_zeros_interv:
-  interv_type: 'single'
+zero_intervs:
   interv_value_sampling: 'zeros'
 
-single_gaussian_interv:
-  interv_type: 'single'
+gaussian_intervs:
   interv_value_sampling: 'gaussian'
-
-multi_gaussian_interv:
-  interv_type: 'multi'
-  interv_value_sampling: 'gaussian'
-
-multi_zeros_interv:
-  interv_type: 'multi'
-  interv_value_sampling: 'zeros'
 

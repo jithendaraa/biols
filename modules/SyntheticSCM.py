@@ -216,6 +216,7 @@ class SyntheticSCM(object):
 
         return X
 
+
 class LinearGaussianColorSCM(object):
     """
         SCM class to generate linear gaussian colors for the chemistry dataset

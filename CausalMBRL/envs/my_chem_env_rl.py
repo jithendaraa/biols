@@ -105,7 +105,6 @@ class LinGaussColorCubesRL(gym.Env):
                     ), 
                 axis = 0) 
         
-    
     def reset(self):
         """
             Generate observational data

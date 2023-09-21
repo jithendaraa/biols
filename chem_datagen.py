@@ -4,8 +4,13 @@ import numpy as onp
 import jax.numpy as jnp
 
 from typing import OrderedDict
+from collections import namedtuple
 from tqdm import tqdm
 from modules.SyntheticSCM import LinearGaussianColorSCM
+
+GTSamples = namedtuple('GTSamples', ['z', 'images', 'gt_W', 'gt_P', 'gt_L'])
+Interventions = namedtuple('Interventions', ['values', 'targets'])
+
 
 def generate_colors(opt, chem_data, low, high, interv_low, interv_high): 
     """
@@ -30,7 +35,7 @@ def generate_colors(opt, chem_data, low, high, interv_low, interv_high):
         interv_data_ = chem_data.intervene_sem(chem_data.W, 
                                                 interv_data_per_set, 
                                                 opt.sem_type,
-                                                sigmas=[opt.noise_sigma], 
+                                                sigmas=[opt.decoder_sigma], 
                                                 idx_to_fix=intervened_node_idxs, 
                                                 values_to_fix=interv_value, 
                                                 low=low, 
@@ -41,7 +46,8 @@ def generate_colors(opt, chem_data, low, high, interv_low, interv_high):
     z = onp.concatenate((obs_data, interv_data), axis=0)
     return z, interv_targets, interv_values
 
-def generate_chemdata(opt, sigmas, low=-8., high=8., interv_low=-5., interv_high=5., baseroot=None):
+
+def generate_chemdata(opt, sigmas, clamp_low=-8., clamp_high=8., interv_low=-5., interv_high=5., baseroot=None):
     """
         [TODO]
     """
@@ -50,28 +56,28 @@ def generate_chemdata(opt, sigmas, low=-8., high=8., interv_low=-5., interv_high
 
     if opt.generate:
         chem_data = LinearGaussianColorSCM(
-                        n=opt.num_samples,
-                        obs_data=opt.obs_data,
-                        d=opt.num_nodes,
-                        graph_type="erdos-renyi",
-                        degree=2 * opt.exp_edges,
-                        sem_type=opt.sem_type,
-                        dataset_type="linear",
-                        sigmas=sigmas,
-                        data_seed=opt.data_seed,
-                        low=low, 
-                        high=high
-                    )
+            n=opt.num_samples,
+            obs_data=opt.obs_data,
+            d=opt.num_nodes,
+            graph_type="erdos-renyi",
+            degree=2 * opt.exp_edges,
+            sem_type=opt.sem_type,
+            dataset_type="linear",
+            sigmas=sigmas,
+            data_seed=opt.data_seed,
+            low=clamp_low, 
+            high=clamp_high
+        )
         gt_W = chem_data.W
         gt_P = chem_data.P
         gt_L = chem_data.P.T @ chem_data.W.T @ chem_data.P
 
-        # ? generate linear gaussian colors
-        z, interv_targets, interv_values = generate_colors(opt, chem_data, low, high, interv_low, interv_high)
-        normalized_z = 255. * ((z / (2 * high)) + 0.5)
+        # generate linear gaussian colors
+        z, interv_targets, interv_values = generate_colors(opt, chem_data, clamp_low, clamp_high, interv_low, interv_high)
+        interventions = Interventions(targets=interv_targets, values=interv_values)
 
         # Use above colors (z) to generate images
-        images = generate_chem_image_dataset(opt.num_samples, opt.num_nodes, interv_values, interv_targets, z)
+        images = generate_chem_image_dataset(opt.num_nodes, interventions, z)
         onp.save(f'{baseroot}/scratch/interv_values-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(interv_values))
         onp.save(f'{baseroot}/scratch/interv_targets-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(interv_targets))
         onp.save(f'{baseroot}/scratch/z-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(z))
@@ -90,7 +96,6 @@ def generate_chemdata(opt, sigmas, low=-8., high=8., interv_low=-5., interv_high
 
     print(gt_W)
     print()
-
     max_cols = jnp.max(interv_targets.sum(1))
     data_idx_array = jnp.arange(d + 1)[None, :].repeat(n, axis=0)
     dummy_interv_targets = jnp.concatenate((interv_targets, jnp.array([[False]] * n)), axis=1)
@@ -98,42 +103,45 @@ def generate_chemdata(opt, sigmas, low=-8., high=8., interv_low=-5., interv_high
     interv_nodes = jnp.array([jnp.concatenate((interv_nodes[i], jnp.array([d] * int(max_cols - len(interv_nodes[i]))))) for i in range(n)]).astype(int)
     return z, interv_nodes, interv_values, images, gt_W, gt_P, gt_L
 
-def generate_chem_image_dataset(n, d, interv_values, interv_targets, z):
+def generate_chem_image_dataset(d, interventions, z):
     """
-        [TODO]
+        Given samples of z, project and generate images
     """
     images = None
     env = gym.make(f'LinGaussColorCubesRL-{d}-{d}-Static-10-v0')
-
-    for i in tqdm(range(n)):
+    for i in tqdm(range(len(interventions.targets))):
         action = OrderedDict()
-        action['nodes'] = onp.where(interv_targets[i])
-        action['values'] = interv_values[i]
+        action['nodes'] = onp.where(interventions.targets[i])
+        action['values'] = interventions.values[i]
         ob, _, _, _ = env.step(action, z[i])
         
-        if i == 0:
+        if i == 0:  
             images = ob[1][jnp.newaxis, :]
         else:
             images = onp.concatenate((images, ob[1][jnp.newaxis, :]), axis=0)
 
     return images
 
-def generate_test_samples(d, W, sem_type, sigmas, low, high, num_test_samples, interv_low=-5., interv_high=5.):
-    test_interv_data, test_interv_targets, test_interv_values = generate_samples(d,
-                                                                            W, 
-                                                                            sem_type,
-                                                                            sigmas,
-                                                                            low, high, 
-                                                                            num_test_samples,
-                                                                            interv_low, 
-                                                                            interv_high
-                                                                            )
 
-    test_images = generate_chem_image_dataset(num_test_samples, 
-                                            d, 
-                                            test_interv_values, 
-                                            test_interv_targets, 
-                                            test_interv_data)
+def generate_test_samples(d, W, sem_type, sigmas, low, high, num_test_samples, interv_low=-5., interv_high=5.):
+    test_interv_z, test_interv_targets, test_interv_values = generate_samples(
+        d,
+        W,
+        sem_type,
+        sigmas,
+        low, high, 
+        num_test_samples,
+        interv_low, 
+        interv_high
+    )
+
+    test_images = generate_chem_image_dataset(
+        num_test_samples, 
+        d, 
+        test_interv_values, 
+        test_interv_targets, 
+        test_interv_z
+    )
     _, h, w, c = test_images.shape
     padded_test_images = onp.zeros((h, 5, c))
 
@@ -147,7 +155,8 @@ def generate_test_samples(d, W, sem_type, sigmas, low, high, num_test_samples, i
     test_interv_nodes = jnp.array([jnp.concatenate((test_interv_nodes[i], jnp.array([d] * (max_cols - len(test_interv_nodes[i])))))
         for i in range(num_test_samples)]).astype(int)
 
-    return test_interv_data, test_interv_nodes, test_interv_values, test_images[:, :, :, 0:1], padded_test_images[:, :, 0]
+    test_interventions = Interventions(nodes=test_interv_nodes, values=test_interv_values)
+    return test_interv_z, test_interventions, padded_test_images[:, :, 0]
 
 
 def intervene_sem(
@@ -190,7 +199,7 @@ def intervene_sem(
 
 
 def generate_samples(d, W, sem_type, sigmas, low, high, num_test_samples, interv_low, interv_high):
-    interv_data = []
+    interv_z = []
     test_interv_values = onp.random.uniform(low=interv_low, high=interv_high, size=(num_test_samples, d))
     interv_targets = onp.full((num_test_samples, d), False)
 
@@ -209,10 +218,10 @@ def generate_samples(d, W, sem_type, sigmas, low, high, num_test_samples, interv
                                     values_to_fix=interv_value, 
                                     low=low, 
                                     high=high)
-        if i == 0:  interv_data = interv_data_
-        else: interv_data = onp.concatenate((interv_data, interv_data_), axis=0)
+        if i == 0:  interv_z = interv_data_
+        else: interv_z = onp.concatenate((interv_z, interv_data_), axis=0)
 
-    return interv_data, interv_targets, test_interv_values
+    return interv_z, interv_targets, test_interv_values
 
 
 

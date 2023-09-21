@@ -1,4 +1,5 @@
 defaults:
+# python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder er1-def_datagen_nofix_noise_no_interv_noise-chemdataproj-d005-D2500-multi-n_pairs2000-sets20-gaussianinterv --data_seed 0
   lr: 0.0001
   logdir: 'logs'
   min_interv_value: -5.
@@ -24,49 +25,42 @@ defaults:
   num_steps: 10000
   wandb_project: 'BIOLS'
   wandb_entity: 'structurelearning'
-  off_wandb: False
+  off_wandb: True
   learn_P: False
   pred_sigma: 1.0
+  batch_size: 10000
 
   # Remove later
   decoder_sigma: 0.1
   sem_type: 'linear-gauss'
   graph_type: 'erdos-renyi'
 
-
-gaussian_interv_sampling:
-  interv_value_sampling: 'uniform'
-
-biols_fix_noise_interv_noise_single_interv_zerointerv:
-  fix_noise: True
-  no_interv_noise: False 
-  biols_data_folder: 'er1-ws_datagen_fix_noise_interv_noise-SONproj-d005-D0005-single-n_pairs2000-sets20-zerosinterv-non_eq_noise_var'
-
-biols_fix_noise_interv_noise_multi_interv_zerointerv:
-  fix_noise: True
-  no_interv_noise: False 
-  biols_data_folder: 'er1-ws_datagen_fix_noise_interv_noise-SONproj-d005-D0005-single-n_pairs2000-sets20-zerosinterv-non_eq_noise_var'
-
-biols_fix_noise_interv_noise_multi_interv_gaussian_interv:
-  fix_noise: True
-  no_interv_noise: False 
-  biols_data_folder: 'er1-ws_datagen_nofix_noise_interv_noise-SONproj-d005-D0005-multi-n_pairs2000-sets20-gaussianinterv-non_eq_noise_var'
-
-
 biols_learn_L:
   exp_name: 'BIOLS_learnL'
   num_steps: 10000
   learn_P: False
+
+biols_image_learn_L:
+  exp_name: 'BIOLS_Image_learnL'
+  num_steps: 1000
+  learn_P: False
+  batch_size: 256
+  lr: 0.0001
 
 biols_learn_P:
   exp_name: 'BIOLS_learnSCM'
   num_steps: 20000
   learn_P: True
 
+biols_image_learn_P:
+  exp_name: 'BIOLS_Image_learnL'
+  num_steps: 20000
+  learn_P: True
+
 vae_linear_baseline:
   exp_name: 'VAE baseline'
   data_seed: 0
-  num_steps: 5000
+  num_steps: 10000
   corr: True
 
 graphvae_vector_baseline:
@@ -88,3 +82,22 @@ graphvae_vector_baseline:
   early_stop: 10000
   tensorboardX: False
   log_dir: "saved/runs"
+
+gaussian_interv_sampling:
+  interv_value_sampling: 'gaussian'
+
+biols_fix_noise_interv_noise_single_interv_zerointerv:
+  fix_noise: True
+  no_interv_noise: False 
+  biols_data_folder: 'er1-ws_datagen_fix_noise_interv_noise-SONproj-d005-D0005-single-n_pairs2000-sets20-zerosinterv-non_eq_noise_var'
+
+biols_fix_noise_interv_noise_multi_interv_zerointerv:
+  fix_noise: True
+  no_interv_noise: False 
+  biols_data_folder: 'er1-ws_datagen_fix_noise_interv_noise-SONproj-d005-D0005-single-n_pairs2000-sets20-zerosinterv-non_eq_noise_var'
+
+biols_fix_noise_interv_noise_multi_interv_gaussian_interv:
+  fix_noise: True
+  no_interv_noise: False 
+  biols_data_folder: 'er1-ws_datagen_nofix_noise_interv_noise-SONproj-d005-D0005-multi-n_pairs2000-sets20-gaussianinterv-non_eq_noise_var'
+

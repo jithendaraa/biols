@@ -28,26 +28,27 @@ import utils
 
 config.update("jax_enable_x64", True)
 Gradients = namedtuple('Gradients', ['model', 'LΣ'])
-Losses = namedtuple('Losses', ['nll', 'LΣ_posterior_logprobs', 'LΣ_prior_logprobs', 'L_prior_logprobs', 'Σ_prior_logprobs', 'KL_term_LΣ', 'KL_term_P', 'neg_elbo'])
+Losses = namedtuple('Losses', ['nll', 'LΣ_posterior_logprobs', 'LΣ_prior_logprobs', 'L_prior_logprobs', 'Σ_prior_logprobs', 'KL_term_LΣ', 'log_P_posterior', 'log_P_prior', 'KL_term_P', 'neg_elbo'])
 
 # Load config yaml as options for experiment
 configs = yaml.safe_load((pathlib.Path("..") / "biols_config.yaml").read_text())
 opt, folder_path = utils.load_yaml(configs)
-opt.obs_data = opt.n_pairs
 
 # Set seeds
 onp.random.seed(opt.data_seed)
 rng_key = jax.random.PRNGKey(opt.data_seed)
 hk_key = hk.PRNGSequence(opt.data_seed)
 assert opt.max_interv_value == -opt.min_interv_value
+opt.obs_data = opt.n_pairs
 
 # Set some constants
+logdir = utils.set_logdir(opt)
+os.makedirs(logdir, exist_ok=True)
+noise_dim = opt.num_nodes
 hard = True
 l_dim = opt.num_nodes * (opt.num_nodes - 1) // 2
 horseshoe_tau = utils.set_horseshoe_tau(opt.num_samples, opt.num_nodes, opt.exp_edges)
-logdir = utils.set_logdir(opt)
-noise_dim = opt.num_nodes
-os.makedirs(logdir, exist_ok=True)
+pred_sigma = opt.pred_sigma
 print(f"Learning permutation: {opt.learn_P}")
 
 # Load saved data
@@ -55,12 +56,11 @@ gt_samples, interventions = utils.read_biols_dataset(folder_path)
 gt_W = onp.load(f'{folder_path}/weighted_adjacency.npy')
 gt_P = onp.load(f'{folder_path}/perm.npy')
 gt_L = onp.load(f'{folder_path}/edge_weights.npy')
-gt_sigmas = onp.load(f'{folder_path}/gt_sigmas.npy')
-print(gt_W)
+print(gt_samples.W)
 
-# assert opt.learn_Z is True
 LΣ_prior_dist = Horseshoe(scale=jnp.ones(l_dim + noise_dim) * horseshoe_tau)
 gumbel_sinkhorn = GumbelSinkhorn(opt.num_nodes, noise_type="gumbel", tol=opt.max_deviation)
+
 
 if opt.off_wandb is False:  
     wandb.init(project = opt.wandb_project, 
@@ -69,14 +69,12 @@ if opt.off_wandb is False:
                 settings = wandb.Settings(start_method="fork"))
     wandb.run.name = f'{opt.exp_name}_{opt.data_seed}'
     wandb.run.save()
-    utils.save_graph_images(gt_P, gt_L, gt_W, 'gt_P.png', 'gt_L.png', 'gt_w.png', logdir)
+    utils.save_graph_images(gt_samples.P, gt_samples.L, gt_samples.W, 'gt_P.png', 'gt_L.png', 'gt_w.png', logdir)
     wandb.log({   
                 "graph_structure(GT-pred)/Ground truth W": wandb.Image(join(logdir, 'gt_w.png')),
                 "graph_structure(GT-pred)/Ground truth P": wandb.Image(join(logdir, 'gt_P.png')), 
                 "graph_structure(GT-pred)/Ground truth L": wandb.Image(join(logdir, 'gt_L.png')), 
             }, step=0)
-
-pred_sigma = 1.0
 
 def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     """
@@ -86,13 +84,14 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
             + exp_{L, Σ} KL(q(L, Σ) || P(L)p(Σ))
     """
     KL_term_LΣ, KL_term_P = 0., 0.
+    log_P_posterior, log_P_prior = 0., 0.
 
     (   
         pred_samples,
         batch_P_logits,
         LΣ_samples,
         LΣ_posterior_logprobs,
-        log_noise_std_samples
+        _
                                 ) = forward.apply(params.model, 
                                                     rng_key, 
                                                     hard, 
@@ -112,9 +111,9 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     KL_term_LΣ = LΣ_posterior_logprobs - LΣ_prior_logprobs
     
     if opt.learn_P:
-        logprob_P = vmap(gumbel_sinkhorn.logprob, in_axes=(0, 0, None))(pred_samples.P, batch_P_logits.astype(jnp.float64), opt.bethe_iters)
+        log_P_posterior = vmap(gumbel_sinkhorn.logprob, in_axes=(0, 0, None))(pred_samples.P, batch_P_logits.astype(jnp.float64), opt.bethe_iters)
         log_P_prior = -jnp.sum(jnp.log(onp.arange(opt.num_nodes) + 1))
-        KL_term_P = logprob_P - log_P_prior
+        KL_term_P = log_P_posterior - log_P_prior
 
     neg_elbo = jnp.mean(nll + KL_term_LΣ + KL_term_P)
     losses = Losses(
@@ -123,12 +122,14 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
         LΣ_prior_logprobs=LΣ_prior_logprobs,
         L_prior_logprobs=L_prior_logprobs,
         Σ_prior_logprobs=Σ_prior_logprobs,
-        KL_term_LΣ=KL_term_LΣ, 
+        KL_term_LΣ=KL_term_LΣ,
+        log_P_posterior=log_P_posterior,
+        log_P_prior=log_P_prior,
         KL_term_P=KL_term_P, 
         neg_elbo=neg_elbo
     )
 
-    aux_res = (losses, pred_samples, LΣ_samples, log_noise_std_samples)
+    aux_res = (losses, pred_samples)
     return neg_elbo, aux_res
 
 
@@ -146,7 +147,7 @@ def gradient_step(rng_key, params, interventions, gt_samples):
         model=grads.model, 
         LΣ=grads.LΣ
     )
-    (losses, pred_samples, LΣ_samples, log_noise_std_samples) = aux_res
+    (losses, pred_samples) = aux_res
                     
     pred_W_means = jnp.mean(pred_samples.W, axis=0)
     G_samples = jnp.where(jnp.abs(pred_samples.W) >= opt.edge_threshold, 1, 0) 
@@ -159,7 +160,7 @@ def gradient_step(rng_key, params, interventions, gt_samples):
         "KL(P)": jnp.mean(losses.KL_term_P),
     }
 
-    return (loss, losses, gradients, pred_samples, LΣ_samples, log_noise_std_samples, pred_W_means, log_dict)
+    return (loss, losses, gradients, pred_samples, pred_W_means, log_dict)
 
 
 @jit
@@ -192,7 +193,7 @@ forward, params, optimizers, opt_state  = init_model(
 with tqdm(range(opt.num_steps)) as pbar:
     for i in pbar:
         
-        loss, losses, gradients, pred_samples, LΣ_samples, log_noise_std_samples, pred_W_means, log_dict = gradient_step(
+        loss, losses, gradients, pred_samples, pred_W_means, log_dict = gradient_step(
             rng_key, params, interventions, gt_samples
         )
 
@@ -216,10 +217,6 @@ with tqdm(range(opt.num_steps)) as pbar:
                 interventions, 
                 pred_samples, 
                 gt_samples, 
-                gt_W, 
-                gt_sigmas, 
-                gt_P, 
-                gt_L, 
                 loss, 
                 log_dict, 
                 opt

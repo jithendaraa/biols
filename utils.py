@@ -1,18 +1,17 @@
 import os
 import argparse
 import numpy as onp
-
-import jax
+import jax, pdb
 from jax import numpy as jnp
 from jax import jit, vmap
 from math import prod
-
 from os.path import join
 import matplotlib.pyplot as plt
 from collections import namedtuple
 
 Interventions = namedtuple('Interventions', ['targets', 'labels', 'values', 'noise'])
-GTSamples = namedtuple('GTSamples', ['x', 'z'])
+GTSamples = namedtuple('GTSamples', ['x', 'z', 'W', 'P', 'L', 'sigmas'])
+
 
 def read_biols_dataset(folder_path):
 	"""
@@ -20,17 +19,30 @@ def read_biols_dataset(folder_path):
 	"""
 	x_samples = onp.load(f'{folder_path}/x_samples.npy')
 	z_samples = onp.load(f'{folder_path}/z_samples.npy')
-	gt_samples = GTSamples(x_samples, z_samples)
+	gt_W = onp.load(f'{folder_path}/weighted_adjacency.npy')
+	gt_P = onp.load(f'{folder_path}/perm.npy')
+	gt_L = onp.load(f'{folder_path}/edge_weights.npy')
+	gt_sigmas = onp.load(f'{folder_path}/gt_sigmas.npy')
+
+	if len(x_samples.shape)	== 4:
+		x_samples = x_samples[:, :, :, 0:1]
+		
+	gt_samples = GTSamples(x=x_samples, z=z_samples, W=gt_W, P=gt_P, L=gt_L, sigmas=gt_sigmas)
 
 	interv_labels = onp.load(f'{folder_path}/interv_nodes.npy')
 	interv_targets = onp.load(f'{folder_path}/interv_targets.npy')
 	interv_noise = onp.load(f'{folder_path}/interv_noise.npy')
 	interv_values = onp.load(f'{folder_path}/interv_values.npy')
-	interventions = Interventions(interv_targets, interv_labels, interv_values, interv_noise)
-
+	interventions = Interventions(
+		targets=interv_targets, 
+		labels=interv_labels, 
+		values=interv_values, 
+		noise=interv_noise
+	)
 	return gt_samples, interventions
 
-def load_yaml(configs):
+
+def load_yaml(configs, full=True):
 	"""
 		Takes in a config dict return options as Namespace
 
@@ -79,6 +91,7 @@ def load_yaml(configs):
 	except:
 		opt.num_samples = 2 * opt.n_pairs
 	return opt, folder_path
+
 
 def args_type(default):
 	def parse_string(x):

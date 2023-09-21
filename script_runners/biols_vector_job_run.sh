@@ -2,10 +2,10 @@
 
 biols_data_folder=$1
 time=$2
-learn_P='False'
+learn_P='True'
 config="BIOLS-learnP(${learn_P})-${biols_data_folder}"
 
-seeds=(0 1 2 3 4)
+seeds=(0 1 3)
 array_len=$(( ${#seeds[@]} ))
 echo $array_len
 
@@ -22,5 +22,3 @@ job_id=${RES##* }
 echo "Job ID"" ""${job_id}"" -> ""${config} ${args}" >> out/job_logs.txt
 echo "Job ID"" ""${job_id}"" -> ""${config} ${args}" 
 echo ""
-
-

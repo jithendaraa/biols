@@ -537,42 +537,4 @@ batched_nonlinear_vector_single_interv_learn_SCM:
   learn_L: True    
   learn_P: True
 
-batched_nonlinear_vector_multi_interv_learn_SCM:
-  exp_name: 'BIOLS batched nonlinear multi interventional learn SCM'
-  interv_type: 'multi'
-  proj: '3_layer_mlp'
-  num_nodes: 5
-  exp_edges: 1.0
-  proj_dims: 100
-  data_seed: 2
-  num_steps: 10000
-  obs_data: 500
-  n_interv_sets: 20
-  pts_per_interv: 100
-  batches: 10000
-  learn_L: True
-  learn_P: True
-  L_KL: False
-  P_KL: False
-  off_wandb: False
-  min_interv_value: -5.
-  max_interv_value: 5.
-
-nonlinear_vector_multi_interv_learn_SCM:
-  exp_name: 'BIOLS nonlinear multi interventional learn SCM'
-  interv_type: 'multi'
-  proj: '3_layer_mlp'
-  num_nodes: 5
-  exp_edges: 1.0
-  proj_dims: 200
-  data_seed: 5
-  obs_data: 500
-  n_interv_sets: 20
-  pts_per_interv: 100
-  num_steps: 5000
-  learn_L: True 
-  learn_P: True
-  off_wandb: False
-  min_interv_value: -12.
-  max_interv_value: 12.
 

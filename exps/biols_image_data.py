@@ -100,8 +100,10 @@ gt_L) = generate_chemdata(
 #                                                         opt.min_interv_value,
 #                                                         opt.max_interv_value)
 
+
 plt.imshow(gt_W)
 plt.savefig(join(logdir, 'gt_w.png'))
+
 # plt.imsave(f'{opt.baseroot}/scratch/test_gt_image_learnP{opt.learn_P}_seed{opt.data_seed}_d{d}_ee_{int(opt.exp_edges)}.png', padded_test_images)
 
 if opt.off_wandb is False:

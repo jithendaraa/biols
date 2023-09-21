@@ -1,12 +1,16 @@
-import os, sys, pdb
-sys.path.append("..")
-sys.path.append("../modules")
-import argparse
+import sys
+sys.path.append('CausalMBRL')
+sys.path.append('CausalMBRL/envs')
+sys.path.append("modules")
 
+import os, pdb
+import argparse
 import pathlib
 import ruamel.yaml as yaml
 import wandb
 
+import envs
+import gym
 from datagen import SyntheticDatagen
 import numpy as onp
 import jax
@@ -16,6 +20,7 @@ import haiku as hk
 import utils
 
 config.update("jax_enable_x64", True)
+
 
 def load_yaml(configs):
     """
@@ -98,7 +103,7 @@ if opt.interv_value_sampling == 'uniform':
     artifact_metadata['max_interv_value'] = opt.max_interv_value
 
 # TODO: To remove this, foldername has to be changed to image-{foldername}
-assert opt.dataset == 'vector'
+assert opt.dataset in ['vector', 'chemdata']
 
 if opt.graph_type == 'erdos-renyi':
     zfilled_nodes = str(opt.num_nodes).zfill(3)
@@ -136,6 +141,8 @@ scm = SyntheticDatagen(
     min_interv_value=opt.min_interv_value,
 )
 
+reqd_shape = (opt.n_pairs, opt.num_nodes)
+
 if opt.datagen_type == 'weakly_supervised':
     x1, x2, z1, z2, labels, interv_targets, interv_values, interv_noise = scm.sample_weakly_supervised(
         rng_key, 
@@ -144,19 +151,41 @@ if opt.datagen_type == 'weakly_supervised':
         return_interv_values=True, 
         fix_noise=opt.fix_noise, 
         no_interv_noise=opt.no_interv_noise,
-        return_interv_noise=True
+        return_interv_noise=True,
+        clamp_low=opt.clamp_low,
+        clamp_high=opt.clamp_high
     )
+
+    assert z1.shape == reqd_shape
+    assert z2.shape == reqd_shape
 
     x_samples = jnp.concatenate([x1, x2], axis=0)
     z_samples = jnp.concatenate([z1, z2], axis=0)
-    interv_nodes = jnp.concatenate((jnp.ones_like(labels) * opt.num_nodes, labels), axis=0)
-    if opt.interv_type == 'single':     interv_nodes = interv_nodes[:, None]
-    interv_targets = jnp.concatenate([jnp.zeros(z1.shape).astype(int), interv_targets], axis=0)
-    interv_values = jnp.concatenate([jnp.zeros(z1.shape), interv_values], axis=0)
-    interv_noise = jnp.concatenate([jnp.zeros(z1.shape).astype(int), interv_noise], axis=0)
+
 
 elif opt.datagen_type == 'default':
-    x_samples, z_samples, interv_nodes, interv_targets, interv_values = scm.sample_default(rng_key)
+
+    assert opt.fix_noise is False and opt.no_interv_noise is True
+
+    x_samples, z_samples, labels, interv_targets, interv_values = scm.sample_default(
+        rng_key, 
+        num_obs_samples=opt.n_pairs, 
+        num_samples=opt.num_samples, 
+        num_interv_sets=opt.n_interv_sets,
+        clamp_low=opt.clamp_low,
+        clamp_high=opt.clamp_high
+    )
+    interv_noise = jnp.zeros_like(interv_values)
+
+
+assert interv_targets.shape == reqd_shape
+assert interv_values.shape == reqd_shape
+
+interv_nodes = jnp.concatenate((jnp.ones_like(labels) * opt.num_nodes, labels), axis=0)
+if opt.interv_type == 'single':     interv_nodes = interv_nodes[:, None]
+interv_targets = jnp.concatenate([jnp.zeros(reqd_shape).astype(int), interv_targets], axis=0)
+interv_values = jnp.concatenate([jnp.zeros(reqd_shape), interv_values], axis=0)
+interv_noise = jnp.concatenate([jnp.zeros(reqd_shape).astype(int), interv_noise], axis=0)
 
 gt_W, gt_P, gt_L = scm.W, scm.P, scm.P.T @ scm.W.T @ scm.P
 gt_sigmas = jnp.exp(scm.log_sigma_W)

@@ -8,22 +8,23 @@ from sklearn.metrics import roc_curve, auc, roc_auc_score, precision_recall_curv
 from scipy.optimize import linear_sum_assignment
 
 
-def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, gt_W, gt_sigmas, gt_P, gt_L, 
-            loss, log_dict, opt, image=False, interv_model=False, generative_interv=False, x_gt=None, interv_logit_params=None):
+def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, loss, log_dict, 
+    opt, image=False, interv_model=False, generative_interv=False, x_gt=None, interv_logit_params=None):
     
-    proj_dims = gt_samples.x.shape[-1]
+    if image:
+        proj_dims = (1, gt_samples.x.shape[1], gt_samples.x.shape[1])
+    else:
+        proj_dims = gt_samples.x.shape[-1]
 
     eval_mean_args = (
         rng_key, 
-        proj_dims, 
         params,
         forward, 
         interventions, 
         gt_samples.z, 
-        gt_W, 
-        gt_sigmas, 
-        gt_P, 
-        gt_L, 
+        gt_samples.W, 
+        gt_samples.P, 
+        gt_samples.L, 
         opt, 
     )
 
@@ -38,10 +39,10 @@ def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
 
     eval_dict = eval_mean(*eval_mean_args, **eval_mean_kwargs)
 
-    mcc_scores = []
-    for j in range(len(pred_samples.z)):
-        mcc_scores.append(get_cross_correlation(onp.array(pred_samples.z[j]), onp.array(gt_samples.z)))
-    mcc_score = onp.mean(onp.array(mcc_scores))
+    # mcc_scores = []
+    # for j in range(len(pred_samples.z)):
+    #     mcc_scores.append(get_cross_correlation(onp.array(pred_samples.z[j]), onp.array(gt_samples.z)))
+    # mcc_score = onp.mean(onp.array(mcc_scores))
 
     wandb_dict = {
                 "ELBO": loss,
@@ -53,7 +54,7 @@ def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
                 
                 # Latent representation
                 "Z_MSE": log_dict["z_mse"],
-                'Evaluations/MCC': mcc_score,
+                # 'Evaluations/MCC': mcc_score,
 
                 # Parameter recovery
                 "L_MSE": log_dict["L_mse"],
@@ -85,14 +86,7 @@ def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
     return wandb_dict, eval_dict
 
 
-def from_W(W: jnp.ndarray, dim: int) -> jnp.ndarray:
-    """Turns a d x d matrix into a (d x (d-1)) vector with zero diagonal."""
-    out_1 = W[onp.triu_indices(dim, 1)]
-    out_2 = W[onp.tril_indices(dim, -1)]
-    return onp.concatenate([out_1, out_2])
-
-
-def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, gt_sigmas, P, L, opt, image=False, 
+def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, image=False, 
             interv_model=False, generative_interv=False, x_gt=None,
             learn_intervs=False, interv_logit_params=None):
     """
@@ -107,11 +101,7 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
     z_prec = onp.linalg.inv(jnp.cov(Zs.T))
     auprcs_w, auprcs_g = [], []
     
-    if image:
-        forward_args = (params.model, rng_key, hard, proj_dims, rng_key, opt, interventions, params.LΣ)
-        forward_kwargs = {'P': P}
-
-    elif interv_model:
+    if interv_model:
         if generative_interv:   forward_args = (params.model, rng_key, hard, rng_key, opt, interventions, params.LΣ, interv_logit_params)
         else:                   forward_args = (params.model, rng_key, hard, rng_key, opt, x_gt, interventions, params.LΣ)
         forward_kwargs = {'P': P, 'L': L, 'learn_intervs': learn_intervs}
@@ -122,10 +112,8 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
 
     res = forward.apply(*forward_args, **forward_kwargs)
 
-    if image:
-        _, _,  _, _, full_l_batch, _, _, W_samples, _ = res
-    
-    elif interv_model:
+
+    if interv_model:
         # REDO this
         _, _, _, _, full_l_batch, _, _, W_samples, _, extended_interv_target, _, _ = res
         pred_interv_target_samples = extended_interv_target[:, :-1]
@@ -189,6 +177,14 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
         out_stats['Interventions/AUPRC'] = interv_auprc
 
     return out_stats
+
+
+
+def from_W(W: jnp.ndarray, dim: int) -> jnp.ndarray:
+    """Turns a d x d matrix into a (d x (d-1)) vector with zero diagonal."""
+    out_1 = W[onp.triu_indices(dim, 1)]
+    out_2 = W[onp.tril_indices(dim, -1)]
+    return onp.concatenate([out_1, out_2])
 
 
 def gumbel_softmax_logits_auprc(true_interv_targets, interv_gs_logits):

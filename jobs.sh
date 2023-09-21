@@ -1,8 +1,8 @@
 #!/bin/bash
-exp_id=$1   
+exp_id=$1
 data_config=${2:-'er1-ws_datagen_fix_noise_interv_noise-3_layer_mlpproj-d005-D0100-single-n_pairs2000-sets20-zerosinterv'}
 
-def_time='3:00:00'
+def_time='9:00:00'
 time=${3:-$def_time}
 
 

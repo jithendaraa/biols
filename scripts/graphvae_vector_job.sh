@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --time=6:00:00
-#SBATCH --mem=48G
+#SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=6
+#SBATCH --exclude cn-g[005-012,017-026]
 
-seeds=(0)
+seeds=(0 1 2 3 4)
 lr=0.00005
-num_steps=2000
+num_steps=10000
 off_wandb='False'
 
 biols_data_folder=$1
