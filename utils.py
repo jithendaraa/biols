@@ -80,7 +80,6 @@ def load_yaml(configs):
 		opt.num_samples = 2 * opt.n_pairs
 	return opt, folder_path
 
-
 def args_type(default):
 	def parse_string(x):
 		if default is None:

@@ -99,7 +99,6 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
         Computes mean error statistics for P, L parameters and data
         data should be observational
     """
-    edge_threshold = 0.3
     hard = True
     dim = opt.num_nodes
     noise_dim = dim
@@ -163,7 +162,7 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
         stats["MSE"] = onp.mean((Zs.T - est_W_clipped.T @ Zs.T) ** 2)
         return stats
 
-    stats = sample_stats(pred_samples.W[0], w_noise[0])
+    stats = sample_stats(pred_samples.W[0], w_noise[0], opt.edge_threshold)
     stats = {key: [stats[key]] for key in stats}
     for i, W in enumerate(pred_samples.W[1:]):
         new_stats = sample_stats(W, w_noise[i])
@@ -171,7 +170,7 @@ def eval_mean(rng_key, proj_dims, params, forward, interventions, z_data, gt_W, 
             stats[key] = stats[key] + [new_stats[key]]
 
     out_stats = {key: onp.mean(stats[key]) for key in stats}
-    out_stats["auroc"] = auroc(pred_samples.W, gt_W, edge_threshold)
+    out_stats["auroc"] = auroc(pred_samples.W, gt_W, opt.edge_threshold)
     out_stats["auprc_w"] = onp.array(auprcs_w).mean()
     out_stats["auprc_g"] = onp.array(auprcs_g).mean()
 

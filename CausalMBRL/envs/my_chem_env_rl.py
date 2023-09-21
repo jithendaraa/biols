@@ -1,16 +1,10 @@
-import gym, pdb, torch
+import gym, pdb
 from gym import spaces
 import numpy as np
 from ColorGen import *
 from collections import OrderedDict
 from dataclasses import dataclass
-
-from PIL import Image
 import skimage
-from torchvision import transforms
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 def fig2rgb_array(fig):
     fig.canvas.draw()
@@ -142,21 +136,11 @@ class LinGaussColorCubesRL(gym.Env):
                 ),
                 color=rgb_colors[idx])
 
-    def step(self, action, channel_colors=None):
+    def step(self, action, channel_colors):
         nodes_to_intervene = action['nodes']
         interv_values = action['values'].reshape(1, -1)
         done = False
         rgb_colors = []
-
-        if channel_colors is None:
-            weighted_adj_mat = self.W.copy()
-            weighted_adj_mat[:, nodes_to_intervene] = 0
-
-            if len(nodes_to_intervene) == 0:
-                channel_colors = self.colorgen.capped_obs_sample(self.low, self.high).squeeze(0)
-            else:
-                channel_colors = self.colorgen.capped_interv_samples(nodes_to_intervene, interv_values, 
-                                                                self.low, self.high).squeeze(0)
 
         normalized_channel_colors = 255. * ((channel_colors / (2 * self.high)) + 0.5)  
         rgb_colors = []
@@ -167,13 +151,6 @@ class LinGaussColorCubesRL(gym.Env):
         state_obs = self.render()
         state_obs = state_obs[:3, :, :]
         interv_details = (nodes_to_intervene, interv_values) 
-        
-        # pil_image = Image.fromarray(np.uint8(state_obs.T))
-        # np_image = transforms.Compose([
-        #     transforms.Resize(64), 
-        #     transforms.ToTensor()]
-        # )(pil_image).numpy().transpose(1, 2, 0)
-        # state_obs = (interv_details, np_image * 255.)
         state_obs = (interv_details, state_obs.T)
         return state_obs, None, done, None
 

@@ -76,7 +76,6 @@ if opt.off_wandb is False:
                 "graph_structure(GT-pred)/Ground truth L": wandb.Image(join(logdir, 'gt_L.png')), 
             }, step=0)
 
-
 pred_sigma = 1.0
 
 def calc_neg_elbo(rng_key, params, interventions, gt_samples):

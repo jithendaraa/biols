@@ -92,11 +92,10 @@ def generate_chemdata(opt, sigmas, low=-8., high=8., interv_low=-5., interv_high
     print()
 
     max_cols = jnp.max(interv_targets.sum(1))
-    data_idx_array = jnp.array([jnp.arange(d + 1)] * n)
-    interv_nodes = onp.split(data_idx_array[interv_targets], interv_targets.sum(1).cumsum()[:-1])
-    interv_nodes = jnp.array([jnp.concatenate((interv_nodes[i], jnp.array([d] * (max_cols - len(interv_nodes[i])))))
-        for i in range(n)]).astype(int)
-
+    data_idx_array = jnp.arange(d + 1)[None, :].repeat(n, axis=0)
+    dummy_interv_targets = jnp.concatenate((interv_targets, jnp.array([[False]] * n)), axis=1)
+    interv_nodes = onp.split(data_idx_array[dummy_interv_targets], interv_targets.sum(1).cumsum()[:-1])
+    interv_nodes = jnp.array([jnp.concatenate((interv_nodes[i], jnp.array([d] * int(max_cols - len(interv_nodes[i]))))) for i in range(n)]).astype(int)
     return z, interv_nodes, interv_values, images, gt_W, gt_P, gt_L
 
 def generate_chem_image_dataset(n, d, interv_values, interv_targets, z):
@@ -149,6 +148,7 @@ def generate_test_samples(d, W, sem_type, sigmas, low, high, num_test_samples, i
         for i in range(num_test_samples)]).astype(int)
 
     return test_interv_data, test_interv_nodes, test_interv_values, test_images[:, :, :, 0:1], padded_test_images[:, :, 0]
+
 
 def intervene_sem(
         W, n, sem_type, sigmas=None, idx_to_fix=None, values_to_fix=None,

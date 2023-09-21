@@ -27,7 +27,7 @@ then
 
 elif [ "$learn_P" = "True" ]  
 then
-    echo "python biols_vector_data.py --config defaults biols_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
+    echo "python biols_vector_data.py --config defaults biols_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
     python biols_vector_data.py --config defaults biols_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}
 
 fi

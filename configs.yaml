@@ -24,6 +24,7 @@ defaults:
   datagen_type: 'default'
   interv_value_sampling: 'gaussian'
   edge_threshold: 0.3
+  sem_type: 'linear-gauss'
 
   # wandb
   wandb_project: 'BIOLS'

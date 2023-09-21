@@ -14,13 +14,9 @@ from cswm.utils import OneHot
 torch.backends.cudnn.deterministic = True
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--save-folder', type=Path,
-                    default='checkpoints',
-                    help='Path to checkpoints.')
+parser.add_argument('--save-folder', type=Path, default='checkpoints', help='Path to checkpoints.')
+parser.add_argument('--dataset', type=Path, default=Path('data/shapes_eval.h5'), help='Dataset file name.')
 
-parser.add_argument('--dataset', type=Path,
-                    default=Path('data/shapes_eval.h5'),
-                    help='Dataset file name.')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Disable CUDA training.')
 parser.add_argument('--finetune', action='store_true')
