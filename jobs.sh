@@ -12,11 +12,11 @@ then
 
 elif [ ${exp_id} == '2' ]
 then
-    bash script_runners/batched_biols_vector_job_run.sh ${dataset} 'BIOLS' ${time} ${config}
+    bash script_runners/batched_biols_vector_job_run.sh 'BIOLS' ${time} ${config}
 
 elif [ ${exp_id} == '3' ]
 then
-    bash script_runners/biols_image_job_run.sh ${dataset} ${train} 'BIOLS_Image' ${time} ${config}
+    bash script_runners/biols_image_job_run.sh ${data_config} ${time} 
 
 elif [ ${exp_id} == '4' ] # ! vae baseline
 then

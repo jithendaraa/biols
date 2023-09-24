@@ -3,18 +3,17 @@ sys.path.append('CausalMBRL')
 sys.path.append('CausalMBRL/envs')
 sys.path.append("modules")
 
-import os, pdb
+import os
 import argparse
 import pathlib
 import ruamel.yaml as yaml
-import wandb
 
 import envs
 import gym
 from datagen import SyntheticDatagen
 import numpy as onp
 import jax
-from jax import jit, lax, vmap, value_and_grad, config
+from jax import config
 from jax import numpy as jnp
 import haiku as hk
 import utils
