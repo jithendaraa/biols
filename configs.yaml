@@ -381,20 +381,26 @@ nonlinear_vector_multi_interv_learn_L:
 # ! Exp 5. Learn L Conv. BIOLS
 biols_chem_data:
   exp_name: 'BIOLS chemdata'
+  lr: 0.0008
   interv_type: 'multi'
   dataset: 'chemdata'
   num_nodes: 5
   exp_edges: 1.0
-  data_seed: 3
+  proj_dims: 2500
+  data_seed: 0
   noise_sigma: 1.5
   obs_data: 500
   generate: True
   off_wandb: True
   batches: 256
-  num_steps: 1000
+  num_steps: 2000
   n_interv_sets: 20
   pts_per_interv: 100
   baseroot: '/home/mila/j/jithendaraa.subramanian'
+  clamp_low: -8.
+  clamp_high: 8.
+  decoder_sigma: 0.1
+  proj: 'chemdata'
 
 
 

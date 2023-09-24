@@ -1,5 +1,5 @@
 defaults:
-# python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder er1-def_datagen_nofix_noise_no_interv_noise-chemdataproj-d005-D2500-multi-n_pairs2000-sets20-gaussianinterv --data_seed 0
+  # python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder er1-def_datagen_nofix_noise_no_interv_noise-chemdataproj-d005-D2500-multi-n_pairs2000-sets20-gaussianinterv --data_seed 0
   lr: 0.0001
   logdir: 'logs'
   min_interv_value: -5.
@@ -27,11 +27,14 @@ defaults:
   wandb_entity: 'structurelearning'
   off_wandb: True
   learn_P: False
-  pred_sigma: 1.0
+  pred_sigma: 0.1
   batch_size: 10000
 
+  # ! Dont change this or remove
+  clamp_low: -8.
+  clamp_high: 8.
+
   # Remove later
-  decoder_sigma: 0.1
   sem_type: 'linear-gauss'
   graph_type: 'erdos-renyi'
 
@@ -45,7 +48,7 @@ biols_image_learn_L:
   num_steps: 1000
   learn_P: False
   batch_size: 256
-  lr: 0.0001
+  lr: 0.001
 
 biols_learn_P:
   exp_name: 'BIOLS_learnSCM'

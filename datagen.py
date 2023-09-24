@@ -218,8 +218,8 @@ class SyntheticDatagen(SyntheticSCM):
                     x_mu = this_image
                 else:
                     x_mu = onp.concatenate((x_mu, this_image), axis=0)
-        x_samples = x_mu
-        # x_samples = x_mu + jax.random.normal(rng_key, shape=x_mu.shape) * self.decoder_sigma
+
+        x_samples = x_mu + jax.random.normal(rng_key, shape=x_mu.shape) * self.decoder_sigma
         return x_samples
 
     def sample_default(self, rng_key, num_obs_samples, num_samples, num_interv_sets, clamp_low=-8., clamp_high=8.):

@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=6
 #SBATCH --exclude cn-g[005-012,017-026]
 
-seeds=(0 1 2 3 4)
+seeds=(2 4)
 lr=0.00005
 num_steps=10000
 off_wandb='False'

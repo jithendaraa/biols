@@ -8,28 +8,19 @@ from sklearn.metrics import roc_curve, auc, roc_auc_score, precision_recall_curv
 from scipy.optimize import linear_sum_assignment
 
 
-def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, loss, log_dict, 
-    opt, image=False, interv_model=False, generative_interv=False, x_gt=None, interv_logit_params=None):
-    
-    if image:
-        proj_dims = (1, gt_samples.x.shape[1], gt_samples.x.shape[1])
-    else:
-        proj_dims = gt_samples.x.shape[-1]
+def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
+    loss, log_dict, opt, batch_idxs=None, interv_model=False, generative_interv=False, interv_logit_params=None):
 
     eval_mean_args = (
         rng_key, 
         params,
         forward, 
         interventions, 
-        gt_samples.z, 
-        gt_samples.W, 
-        gt_samples.P, 
-        gt_samples.L, 
+        gt_samples,
         opt, 
     )
 
     eval_mean_kwargs = {
-        "image": image,
         "interv_model": interv_model,
         "generative_interv": generative_interv,
         "x_gt": gt_samples.x,
@@ -39,22 +30,24 @@ def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
 
     eval_dict = eval_mean(*eval_mean_args, **eval_mean_kwargs)
 
-    # mcc_scores = []
-    # for j in range(len(pred_samples.z)):
-    #     mcc_scores.append(get_cross_correlation(onp.array(pred_samples.z[j]), onp.array(gt_samples.z)))
-    # mcc_score = onp.mean(onp.array(mcc_scores))
+    mcc_scores = []
+    for j in range(len(pred_samples.z)):
+        if batch_idxs is None:
+            mcc_scores.append(get_cross_correlation(pred_samples.z[j], gt_samples.z))
+        else:
+            mcc_scores.append(get_cross_correlation(pred_samples.z[j], gt_samples.z[batch_idxs]))
+    mcc_score = onp.mean(onp.array(mcc_scores))
 
     wandb_dict = {
                 "ELBO": loss,
                 "X_MSE": log_dict["x_mse"],
                 "KL(LΣ)": log_dict["KL(LΣ)"],
                 "KL(P)": log_dict["KL(P)"],
-                # "true_obs_KL_term_Z": log_dict["true_obs_KL_term_Z"],
                 "train sample KL": eval_dict["sample_kl"],
                 
                 # Latent representation
                 "Z_MSE": log_dict["z_mse"],
-                # 'Evaluations/MCC': mcc_score,
+                'Evaluations/MCC': mcc_score,
 
                 # Parameter recovery
                 "L_MSE": log_dict["L_mse"],
@@ -86,7 +79,7 @@ def evaluate(rng_key, params, forward, interventions, pred_samples, gt_samples, 
     return wandb_dict, eval_dict
 
 
-def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, image=False, 
+def eval_mean(rng_key, params, forward, interventions, gt_samples, opt,
             interv_model=False, generative_interv=False, x_gt=None,
             learn_intervs=False, interv_logit_params=None):
     """
@@ -97,21 +90,20 @@ def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, 
     dim = opt.num_nodes
     noise_dim = dim
 
-    Zs = z_data[:opt.obs_data]
+    Zs = gt_samples.obs_z_samples
     z_prec = onp.linalg.inv(jnp.cov(Zs.T))
     auprcs_w, auprcs_g = [], []
     
     if interv_model:
         if generative_interv:   forward_args = (params.model, rng_key, hard, rng_key, opt, interventions, params.LΣ, interv_logit_params)
         else:                   forward_args = (params.model, rng_key, hard, rng_key, opt, x_gt, interventions, params.LΣ)
-        forward_kwargs = {'P': P, 'L': L, 'learn_intervs': learn_intervs}
+        forward_kwargs = {'P': gt_samples.P, 'L': gt_samples.L, 'learn_intervs': learn_intervs}
         
     else:
         forward_args = (params.model, rng_key, hard, rng_key, opt, interventions, params.LΣ)
-        forward_kwargs = {'P': P}
+        forward_kwargs = {'P': gt_samples.P}
 
     res = forward.apply(*forward_args, **forward_kwargs)
-
 
     if interv_model:
         # REDO this
@@ -126,7 +118,7 @@ def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, 
     def sample_stats(est_W, noise, threshold=0.3):
         est_noise = jnp.ones(dim) * jnp.exp(noise)
         est_W_clipped = jnp.where(jnp.abs(est_W) > threshold, est_W, 0)
-        gt_graph_clipped = jnp.where(jnp.abs(gt_W) > threshold, est_W, 0)
+        gt_graph_clipped = jnp.where(jnp.abs(gt_samples.W) > threshold, est_W, 0)
         
         binary_est_W = jnp.where(est_W_clipped, 1, 0)
         binary_gt_graph = jnp.where(gt_graph_clipped, 1, 0)
@@ -138,7 +130,7 @@ def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, 
         auprcs_w.append(cdt.metrics.precision_recall(gt_graph_w, pred_graph_w)[0])
         auprcs_g.append(cdt.metrics.precision_recall(gt_graph_g, pred_graph_g)[0])
 
-        stats = count_accuracy(gt_W, est_W_clipped)
+        stats = count_accuracy(gt_samples.W, est_W_clipped)
         # true_KL_divergence = precision_kl_loss(gt_sigmas, gt_W, est_noise, est_W_clipped)
         sample_kl_divergence = precision_kl_sample_loss(z_prec, est_noise, est_W_clipped)
 
@@ -158,7 +150,7 @@ def eval_mean(rng_key, params, forward, interventions, z_data, gt_W, P, L, opt, 
             stats[key] = stats[key] + [new_stats[key]]
 
     out_stats = {key: onp.mean(stats[key]) for key in stats}
-    out_stats["auroc"] = auroc(pred_samples.W, gt_W, opt.edge_threshold)
+    out_stats["auroc"] = auroc(pred_samples.W, gt_samples.W, opt.edge_threshold)
     out_stats["auprc_w"] = onp.array(auprcs_w).mean()
     out_stats["auprc_g"] = onp.array(auprcs_g).mean()
 

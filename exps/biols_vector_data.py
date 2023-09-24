@@ -48,11 +48,10 @@ noise_dim = opt.num_nodes
 hard = True
 l_dim = opt.num_nodes * (opt.num_nodes - 1) // 2
 horseshoe_tau = utils.set_horseshoe_tau(opt.num_samples, opt.num_nodes, opt.exp_edges)
-pred_sigma = opt.pred_sigma
 print(f"Learning permutation: {opt.learn_P}")
 
 # Load saved data
-gt_samples, interventions = utils.read_biols_dataset(folder_path)
+gt_samples, interventions = utils.read_biols_dataset(folder_path, opt.obs_data)
 gt_W = onp.load(f'{folder_path}/weighted_adjacency.npy')
 gt_P = onp.load(f'{folder_path}/perm.npy')
 gt_L = onp.load(f'{folder_path}/edge_weights.npy')
@@ -75,6 +74,7 @@ if opt.off_wandb is False:
                 "graph_structure(GT-pred)/Ground truth P": wandb.Image(join(logdir, 'gt_P.png')), 
                 "graph_structure(GT-pred)/Ground truth L": wandb.Image(join(logdir, 'gt_L.png')), 
             }, step=0)
+
 
 def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     """
@@ -103,7 +103,7 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     
     # - exp_{P, L, Σ} exp_{Z | P, L, Σ} log p(X | Z)
     vmapped_nll_gaussian = vmap(utils.nll_gaussian, (None, 0, None), 0)
-    nll = vmapped_nll_gaussian(gt_samples.z, pred_samples.z, pred_sigma)
+    nll = vmapped_nll_gaussian(gt_samples.x, pred_samples.x, opt.pred_sigma)
     
     L_prior_logprobs = jnp.sum(LΣ_prior_dist.log_prob(LΣ_samples)[:, :l_dim], axis=1)
     Σ_prior_logprobs = jnp.sum(LΣ_samples[:, l_dim:] ** 2 / (2 * opt.s_prior_std ** 2), axis=-1)

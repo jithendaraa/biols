@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=4
 
-seeds=(0 1 3)
+seeds=(0 1 2 3 4)
 lr=0.0001
 off_wandb='False'
 

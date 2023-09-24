@@ -1,5 +1,7 @@
 out/
 exps/logs/*
+exps/wandb/*
 *__pycache__*
 __pycache__*
 models/__pycache__*
+*.out

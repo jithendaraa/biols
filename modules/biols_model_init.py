@@ -18,6 +18,7 @@ Parameters = namedtuple('Parameters', ['LΣ', 'model'])
 Optimizers = namedtuple('Optimizers', ['LΣ', 'model'])
 OptimizerState = namedtuple('OptimizerState', ['LΣ', 'model'])
 
+
 def forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
     model = BIOLS(
         opt.num_nodes, 
@@ -38,29 +39,55 @@ def forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
     return model(rng_key, interventions.labels, interventions.values, LΣ_params, hard)
 
 
-def init_model(key, rng_key, opt, interventions, l_dim, noise_dim, P=None):
+def image_forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
+    proj_dims = (1, int(opt.proj_dims ** 0.5), int(opt.proj_dims ** 0.5))
+    model = BIOLS_Image(
+        opt.num_nodes,
+        opt.posterior_samples,
+        proj_dims,
+        opt.fixed_tau,
+        opt.hidden_size,
+        opt.learn_P,
+        log_stds_max=opt.log_stds_max,
+        logit_constraint=opt.logit_constraint,
+        P=P,
+        pred_sigma=opt.pred_sigma,
+    )
+
+    return model(rng_key, interventions.labels, interventions.values, LΣ_params, hard)
+
+
+def init_model(key, rng_key, opt, interventions, l_dim, noise_dim, P=None, image=False):
     """
         Initialize model, parameters, and optimizer states
     """
-    forward = hk.transform(forward_fn)
+    if image:
+        forward = hk.transform(image_forward_fn)
+    else:
+        forward = hk.transform(forward_fn)
+
     model_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
     LΣ_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
     
     opt_model = optax.chain(*model_layers)
     opt_LΣ = optax.chain(*LΣ_layers)
-
+    
     LΣ_params = jnp.concatenate((jnp.zeros(l_dim), jnp.zeros(noise_dim), jnp.zeros(l_dim + noise_dim) - 1)).astype(jnp.float32)
     model_params = forward.init(next(key), False, rng_key, opt, interventions, LΣ_params, P)
+
     model_opt_state = opt_model.init(model_params)
     LΣ_opt_state = opt_LΣ.init(LΣ_params)
-
+    
     params = Parameters(LΣ=LΣ_params, model=model_params)
     optimizers = Optimizers(LΣ=opt_LΣ, model=opt_model)
     opt_state = OptimizerState(LΣ=LΣ_opt_state, model=model_opt_state)
 
-    print(f"L and Σ has {ff2(num_params(LΣ_params))} parameters")
-    print(f"Model has {ff2(num_params(model_params))} parameters")
+    print(f"L and Σ has {ff2(num_params(params.LΣ))} parameters")
+    print(f"Model has {ff2(num_params(params.model))} parameters")
     return forward, params, optimizers, opt_state
+
+
+
 
 
 def biols_interv_forward_fn(hard, rng_key, opt, X, interv_targets, 
@@ -197,57 +224,6 @@ def init_generative_interv_model(hk_key, hard, rng_key, opt, interv_targets, int
     return forward, params, opt_params, optimizers
 
 
-
-
-def image_forward_fn(hard, proj_dims, rng_key, opt, interv_targets, interv_values, LΣ_params, P=None):
-
-    model = BIOLS_Image(opt.num_nodes, 
-                    opt.posterior_samples, 
-                    proj_dims,
-                    opt.eq_noise_var, 
-                    opt.fixed_tau,
-                    opt.hidden_size,
-                    opt.max_deviation,
-                    opt.learn_P,
-                    opt.log_stds_max,
-                    opt.logit_constraint,
-                    P=P)
-
-    return model(rng_key, interv_targets, interv_values, LΣ_params, hard)
-
-
-def init_image_model(hard, rng_key, opt, proj_dims, interv_targets, interv_values, 
-                    l_dim, noise_dim, P=None):
-    """
-        Initialize model, parameters, and optimizer states
-    """                    
-    forward = hk.transform(image_forward_fn)
-    model_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
-    LΣ_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
-    
-    opt_model = optax.chain(*model_layers)
-    opt_LΣ = optax.chain(*LΣ_layers)
-
-    if opt.learn_noise:
-        LΣ_params = jnp.concatenate((jnp.zeros(l_dim), jnp.zeros(noise_dim), jnp.zeros(l_dim + noise_dim) - 1)).astype(jnp.float32)
-    else:
-        raise NotImplementedError("Need to implement learn_noise False")
-
-    model_params = forward.init(rng_key,
-                                hard, 
-                                proj_dims,
-                                rng_key, 
-                                opt,
-                                interv_targets[:opt.batches], 
-                                interv_values[:opt.batches], 
-                                LΣ_params, 
-                                P)
-    model_opt_params = opt_model.init(model_params)
-    LΣ_opt_params = opt_LΣ.init(LΣ_params)
-
-    print(f"L and Σ has {ff2(num_params(LΣ_params))} parameters")
-    print(f"Model has {ff2(num_params(model_params))} parameters")
-    return forward, model_params, LΣ_params, model_opt_params, LΣ_opt_params, opt_model, opt_LΣ
 
 
 def ff2(x):

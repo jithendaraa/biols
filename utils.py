@@ -10,10 +10,10 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 
 Interventions = namedtuple('Interventions', ['targets', 'labels', 'values', 'noise'])
-GTSamples = namedtuple('GTSamples', ['x', 'z', 'W', 'P', 'L', 'sigmas'])
+GTSamples = namedtuple('GTSamples', ['x', 'z', 'W', 'P', 'L', 'sigmas', 'obs_z_samples'])
 
 
-def read_biols_dataset(folder_path):
+def read_biols_dataset(folder_path, num_obs_samples):
 	"""
 		Reads previously generated datasets given `folder_path`
 	"""
@@ -27,7 +27,15 @@ def read_biols_dataset(folder_path):
 	if len(x_samples.shape)	== 4:
 		x_samples = x_samples[:, :, :, 0:1]
 		
-	gt_samples = GTSamples(x=x_samples, z=z_samples, W=gt_W, P=gt_P, L=gt_L, sigmas=gt_sigmas)
+	gt_samples = GTSamples(
+		x=x_samples, 
+		z=z_samples, 
+		obs_z_samples=z_samples[:num_obs_samples],
+		W=gt_W, 
+		P=gt_P, 
+		L=gt_L, 
+		sigmas=gt_sigmas
+	)
 
 	interv_labels = onp.load(f'{folder_path}/interv_nodes.npy')
 	interv_targets = onp.load(f'{folder_path}/interv_targets.npy')
@@ -42,7 +50,7 @@ def read_biols_dataset(folder_path):
 	return gt_samples, interventions
 
 
-def load_yaml(configs, full=True):
+def load_yaml(configs):
 	"""
 		Takes in a config dict return options as Namespace
 

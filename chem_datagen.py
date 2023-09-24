@@ -8,8 +8,8 @@ from collections import namedtuple
 from tqdm import tqdm
 from modules.SyntheticSCM import LinearGaussianColorSCM
 
-GTSamples = namedtuple('GTSamples', ['z', 'images', 'gt_W', 'gt_P', 'gt_L'])
-Interventions = namedtuple('Interventions', ['values', 'targets'])
+GTSamples = namedtuple('GTSamples', ['z', 'x', 'W', 'P', 'L', 'obs_z_samples'])
+Interventions = namedtuple('Interventions', ['values', 'targets', 'labels'])
 
 
 def generate_colors(opt, chem_data, low, high, interv_low, interv_high): 
@@ -25,6 +25,7 @@ def generate_colors(opt, chem_data, low, high, interv_low, interv_high):
     interv_data = []
     interv_values = onp.random.uniform(low=interv_low, high=interv_high, size=(n, d))
     interv_targets = onp.full((n, d), False)
+    print(f"noise_sigmas: {chem_data.sigmas}")
 
     for i in range(n_interv_sets):
         interv_k_nodes = onp.random.randint(1, d)
@@ -35,7 +36,7 @@ def generate_colors(opt, chem_data, low, high, interv_low, interv_high):
         interv_data_ = chem_data.intervene_sem(chem_data.W, 
                                                 interv_data_per_set, 
                                                 opt.sem_type,
-                                                sigmas=[opt.decoder_sigma], 
+                                                sigmas=chem_data.sigmas, 
                                                 idx_to_fix=intervened_node_idxs, 
                                                 values_to_fix=interv_value, 
                                                 low=low, 
@@ -74,10 +75,9 @@ def generate_chemdata(opt, sigmas, clamp_low=-8., clamp_high=8., interv_low=-5.,
 
         # generate linear gaussian colors
         z, interv_targets, interv_values = generate_colors(opt, chem_data, clamp_low, clamp_high, interv_low, interv_high)
-        interventions = Interventions(targets=interv_targets, values=interv_values)
 
         # Use above colors (z) to generate images
-        images = generate_chem_image_dataset(opt.num_nodes, interventions, z)
+        images = generate_chem_image_dataset(opt.num_nodes, interv_targets, interv_values, z)
         onp.save(f'{baseroot}/scratch/interv_values-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(interv_values))
         onp.save(f'{baseroot}/scratch/interv_targets-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(interv_targets))
         onp.save(f'{baseroot}/scratch/z-seed{opt.data_seed}_d{d}_ee{int(opt.exp_edges)}.npy', onp.array(z))
@@ -101,18 +101,35 @@ def generate_chemdata(opt, sigmas, clamp_low=-8., clamp_high=8., interv_low=-5.,
     dummy_interv_targets = jnp.concatenate((interv_targets, jnp.array([[False]] * n)), axis=1)
     interv_nodes = onp.split(data_idx_array[dummy_interv_targets], interv_targets.sum(1).cumsum()[:-1])
     interv_nodes = jnp.array([jnp.concatenate((interv_nodes[i], jnp.array([d] * int(max_cols - len(interv_nodes[i]))))) for i in range(n)]).astype(int)
-    return z, interv_nodes, interv_values, images, gt_W, gt_P, gt_L
+    
+    gt_samples = GTSamples(
+        z=z,
+        obs_z_samples=z[:opt.obs_data],
+        x=images,
+        W=gt_W,
+        P=gt_P,
+        L=gt_L,
+    )
 
-def generate_chem_image_dataset(d, interventions, z):
+    interventions = Interventions(
+        labels=interv_nodes,
+        values=interv_values,
+        targets=interv_targets,
+    )
+    
+    return gt_samples, interventions
+
+
+def generate_chem_image_dataset(d, interv_targets, interv_values, z):
     """
         Given samples of z, project and generate images
     """
     images = None
     env = gym.make(f'LinGaussColorCubesRL-{d}-{d}-Static-10-v0')
-    for i in tqdm(range(len(interventions.targets))):
+    for i in tqdm(range(len(interv_targets))):
         action = OrderedDict()
-        action['nodes'] = onp.where(interventions.targets[i])
-        action['values'] = interventions.values[i]
+        action['nodes'] = onp.where(interv_targets[i])
+        action['values'] = interv_values[i]
         ob, _, _, _ = env.step(action, z[i])
         
         if i == 0:  
@@ -159,10 +176,7 @@ def generate_test_samples(d, W, sem_type, sigmas, low, high, num_test_samples, i
     return test_interv_z, test_interventions, padded_test_images[:, :, 0]
 
 
-def intervene_sem(
-        W, n, sem_type, sigmas=None, idx_to_fix=None, values_to_fix=None,
-        low=-10., high=10.
-    ):
+def intervene_sem(W, n, sem_type, sigmas, idx_to_fix=None, values_to_fix=None, low=-10., high=10.):
         """Simulate samples from SEM with specified type of noise.
         Args:
             W: weigthed DAG
@@ -178,8 +192,6 @@ def intervene_sem(
         G = nx.DiGraph(W)
         d = W.shape[0]
         X = onp.zeros([n, d])
-        if len(sigmas) == 1:
-            sigmas = onp.ones(d) * sigmas
 
         ordered_vertices = list(nx.topological_sort(G))
         assert len(ordered_vertices) == d

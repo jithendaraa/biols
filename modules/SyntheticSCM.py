@@ -309,12 +309,6 @@ class LinearGaussianColorSCM(object):
         U_2[np.random.rand(d, d) < 0.5] *= -1
         W_2 = (B_perm != 0).astype(float) * U_2
 
-        # At the moment the generative process is P.T @ lower @ P, we want
-        # it to be P' @ upper @ P'.T.
-        # We can return W.T, so we are saying W.T = P'.T @ lower @ P.
-        # We can then return P.T, as we have
-        # (P.T).T @ lower @ P.T = W.T
-
         if return_w_2:
             return W.T, W_2.T, P.T
         else:
@@ -365,6 +359,7 @@ class LinearGaussianColorSCM(object):
         Args:
             W: weigthed DAG
             n: number of samples
+            sigmas: noise std for each node
             sem_type: {linear-gauss,linear-exp,linear-gumbel}
             idx_to_fix: intervened node or list of intervened nodes
             values_to_fix: intervened values
@@ -375,8 +370,6 @@ class LinearGaussianColorSCM(object):
         G = nx.DiGraph(W)
         d = W.shape[0]
         X = np.zeros([n, d])
-        if len(sigmas) == 1:
-            sigmas = np.ones(d) * sigmas
 
         ordered_vertices = list(nx.topological_sort(G))
         assert len(ordered_vertices) == d
