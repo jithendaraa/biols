@@ -100,7 +100,7 @@ def eval_mean(rng_key, params, forward, interventions, gt_samples, opt,
         forward_kwargs = {'P': gt_samples.P, 'L': gt_samples.L, 'learn_intervs': learn_intervs}
         
     else:
-        forward_args = (params.model, rng_key, hard, rng_key, opt, interventions, params.LΣ)
+        forward_args = (params.model, rng_key, hard, rng_key, opt.posterior_samples, opt, interventions, params.LΣ)
         forward_kwargs = {'P': gt_samples.P}
 
     res = forward.apply(*forward_args, **forward_kwargs)

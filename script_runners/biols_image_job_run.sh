@@ -12,7 +12,7 @@ echo $array_len
 output_file="out/BIOLS_image/biols-image-%A_%a.out"
 echo "Train BIOLS Image: ${config}"
 
-command="sbatch --array=1-${array_len}%512 --job-name ${config} --output ${output_file} --time ${time} scripts/biols_image_job.sh ${biols_data_folder} ${learn_P}}"   
+command="sbatch --array=1-${array_len}%512 --job-name ${config} --output ${output_file} --time ${time} scripts/biols_image_job.sh ${biols_data_folder} ${learn_P}"   
 echo ""
 echo ${command}
 echo ""

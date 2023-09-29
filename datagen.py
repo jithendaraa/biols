@@ -31,6 +31,7 @@ class SyntheticDatagen(SyntheticSCM):
                  proj_dims, 
                  projection,
                  decoder_sigma,
+                 use_decoder_noise,
                  interv_value_sampling='gaussian', # gaussian N(0, 1) or uniform
                  datagen_type='default', # default or weakly_supervised 
                  sem_type='linear-gauss', 
@@ -38,7 +39,9 @@ class SyntheticDatagen(SyntheticSCM):
                  dataset_type='linear', 
                  min_interv_value=-5.,
                  identity_perm=False,
-                 edge_threshold=0.3
+                 edge_threshold=0.3,
+                 interv_noise_dist_sigma=0.1,
+                 interv_value_dist_sigma=1.,
                 ):
 
         assert edge_threshold == 0.3
@@ -66,16 +69,20 @@ class SyntheticDatagen(SyntheticSCM):
         assert projection in ['linear', '3_layer_mlp', 'SON', 'chemdata']
 
         self.graph = jnp.where(jnp.abs(self.W) < edge_threshold, 0, 1)
+        self.degree = degree
         self.data_seed = data_seed
         self.interv_type = interv_type
         self.decoder_sigma = decoder_sigma
         self.min_interv_value = min_interv_value
+        self.max_interv_value = -min_interv_value
+        self.use_decoder_noise = use_decoder_noise
 
         self.sigmas = jnp.exp(log_sigma_W) # std dev of the SCM noise variables
         means = jnp.zeros(num_nodes)
         self.noise_dist = Normal(loc=means, scale=self.sigmas)
         
-        self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * 0.5)
+        self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * interv_noise_dist_sigma)
+        self.interv_value_dist_sigma = interv_value_dist_sigma
 
         # scale of noise variables eps_i
         self.log_sigma_W = log_sigma_W
@@ -101,10 +108,10 @@ class SyntheticDatagen(SyntheticSCM):
             self.proj_matrix = jax.random.uniform(
                 rng_key, 
                 shape=(self.num_nodes, self.proj_dims), 
-                minval=-2., 
-                maxval=2.
+                minval=-5., 
+                maxval=5.
             )
-        
+
         elif self.projection == '3_layer_mlp':
             self.hk_key = hk_key
             self.forward_fn, self.projection_model_params = init_projection_params(
@@ -157,11 +164,14 @@ class SyntheticDatagen(SyntheticSCM):
 
         if self.interv_value_sampling == 'gaussian':
             # print("Interventional values ~ N(0, 1)")
-            interv_values = jax.random.normal(rng_key, shape=(num_interv_samples, self.num_nodes))
+            interv_values = self.interv_value_dist_sigma * jax.random.normal(rng_key, shape=(num_interv_samples, self.num_nodes))
             
         elif self.interv_value_sampling == 'uniform':
-            # print(f"Interventional values ~ U({self.min_interv_value}, {-self.min_interv_value})")
-            interv_values = jax.random.uniform(rng_key, shape=(num_interv_samples, self.num_nodes), minval=self.min_interv_value, maxval=-self.min_interv_value)
+            # print(f"Interventional values ~ U({self.min_interv_value}, {self.max_interv_value})")
+            interv_values = jax.random.uniform(rng_key, shape=(num_interv_samples, self.num_nodes), minval=self.min_interv_value, maxval=self.max_interv_value)
+        
+        elif self.interv_value_sampling == 'zeros':
+            interv_values = jnp.zeros((num_interv_samples, self.num_nodes))
 
         for i in range(num_interv_sets):
             if self.interv_type == 'multi':
@@ -193,7 +203,7 @@ class SyntheticDatagen(SyntheticSCM):
     def project(self, rng_key, z_samples, interventions):
         if self.projection in ['linear', 'SON']: 
             x_mu = z_samples @ self.proj_matrix
-        
+
         elif self.projection == '3_layer_mlp':
             # MLP-based nonlinear projection of z_samples \in \mathbb{R}^d to get x_mu \in \mathbb{R}^D 
             x_mu = self.forward_fn.apply(
@@ -218,8 +228,14 @@ class SyntheticDatagen(SyntheticSCM):
                     x_mu = this_image
                 else:
                     x_mu = onp.concatenate((x_mu, this_image), axis=0)
+            
+        if self.use_decoder_noise:
+            x_samples = x_mu + jax.random.normal(rng_key, shape=x_mu.shape) * self.decoder_sigma
+            if self.projection in ['chemdata']:
+                x_samples = 255. * ((x_mu / 255.) + jax.random.normal(rng_key, shape=x_mu.shape) * self.decoder_sigma)
+        else:
+            x_samples = x_mu
 
-        x_samples = x_mu + jax.random.normal(rng_key, shape=x_mu.shape) * self.decoder_sigma
         return x_samples
 
     def sample_default(self, rng_key, num_obs_samples, num_samples, num_interv_sets, clamp_low=-8., clamp_high=8.):
@@ -228,7 +244,7 @@ class SyntheticDatagen(SyntheticSCM):
 
         z_samples = jnp.zeros((num_samples, self.num_nodes))
         print()
-        print(f'Default sampling: {self.interv_type}-target interventions...')
+        print(f'Default sampling: {self.interv_type}-target interventions, interv_value: {self.interv_value_sampling}, degree: {self.degree}, nodes: {self.num_nodes}')
         
         # Generate z samples 
         obs_z_samples = self.generate_observational_z(num_obs_samples)
@@ -258,11 +274,11 @@ class SyntheticDatagen(SyntheticSCM):
         assert n_pairs % num_interv_sets == 0
         if self.interv_value_sampling == 'gaussian':
             # print("Interventional values ~ N(0, 1)")
-            interv_values = jax.random.normal(rng_key, shape=(n_pairs, self.num_nodes))
+            interv_values = self.interv_value_dist_sigma * jax.random.normal(rng_key, shape=(n_pairs, self.num_nodes))
             
         elif self.interv_value_sampling == 'uniform':
-            # print(f"Interventional values ~ U({self.min_interv_value}, {-self.min_interv_value})")
-            interv_values = jax.random.uniform(rng_key, shape=(n_pairs, self.num_nodes), minval=self.min_interv_value, maxval=-self.min_interv_value)
+            # print(f"Interventional values ~ U({self.min_interv_value}, {self.max_interv_value})")
+            interv_values = jax.random.uniform(rng_key, shape=(n_pairs, self.num_nodes), minval=self.min_interv_value, maxval=self.max_interv_value)
         
         elif self.interv_value_sampling == 'zeros':
             interv_values = jnp.zeros((n_pairs, self.num_nodes))
@@ -270,7 +286,7 @@ class SyntheticDatagen(SyntheticSCM):
         n_samples_per_interv_set = n_pairs // num_interv_sets
         interv_targets_z2 = jnp.zeros((n_pairs, self.num_nodes)).astype(bool) 
         print()
-        print(f'Weakly-supervised sampling: {self.interv_type}-target interventions...')
+        print(f'Weakly-supervised sampling: {self.interv_type}-target interventions, interv_value: {self.interv_value_sampling}, degree: {self.degree}, nodes: {self.num_nodes}')
 
         interv_k_nodes = 1
         intervention_labels = []
@@ -358,7 +374,7 @@ class SyntheticDatagen(SyntheticSCM):
         if self.interv_type == 'multi':
             intervention_labels = self.get_interv_nodes(self.num_nodes, interv_targets_z2)
         
-        assert (z2[interv_targets_z2 == True] == interv_values[interv_targets_z2 == True] + intervention_noise[interv_targets_z2 == True]).all()
+        assert jnp.allclose(jnp.isclose(z2, interv_values + intervention_noise), interv_targets_z2)
 
         return_items = [
             x1.astype(jnp.float32),

@@ -19,5 +19,3 @@ job_id=${RES##* }
 echo "Job ID"" ""${job_id}"" -> ""${config} ${args}" >> out/job_logs.txt
 echo "Job ID"" ""${job_id}"" -> ""${config} ${args}" 
 echo ""
-
-

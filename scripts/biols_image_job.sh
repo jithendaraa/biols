@@ -5,8 +5,9 @@
 #SBATCH --cpus-per-task=4
 
 seeds=(0 1 2 3 4)
-lr=0.001
+lr=0.0005
 off_wandb='False'
+num_steps=1000
 
 biols_data_folder=$1
 learn_P=$2
@@ -22,13 +23,13 @@ cd exps
 
 if [ "$learn_P" = "False" ] 
 then
-    echo "python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
-    python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}
+    echo "python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb} --num_steps ${num_steps}"
+    python biols_image_data.py --config defaults biols_image_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb} --num_steps ${num_steps}
 
 elif [ "$learn_P" = "True" ]  
 then
-    echo "python biols_image_data.py --config defaults biols_image_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
-    python biols_image_data.py --config defaults biols_image_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}
+    echo "python biols_image_data.py --config defaults biols_image_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb} --num_steps ${num_steps}"
+    python biols_image_data.py --config defaults biols_image_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb} --num_steps ${num_steps}
 
 fi
 

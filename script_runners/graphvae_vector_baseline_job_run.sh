@@ -3,7 +3,7 @@
 config=$1
 time=$2
 
-seeds=(2 4)
+seeds=(0 1 2 3 4)
 array_len=$(( ${#seeds[@]} ))
 echo $array_len
 

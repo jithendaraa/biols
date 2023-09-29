@@ -9,7 +9,6 @@ import pdb
 from eval import evaluate
 from collections import OrderedDict, namedtuple, defaultdict
 import matplotlib.pyplot as plt
-import time
 
 sys.path.append('..')
 sys.path.append('../CausalMBRL')
@@ -51,11 +50,7 @@ n = opt.num_samples
 d = opt.num_nodes
 l_dim = d * (d - 1) // 2
 proj_dims = (1, 50, 50)
-num_test_samples = 10
-
 noise_dim = d
-log_sigma_W = onp.random.uniform(low=0, high=jnp.log(2), size=(d,))
-
 degree = opt.exp_edges
 num_bethe_iters = opt.bethe_iters
 horseshoe_tau = utils.set_horseshoe_tau(n, d, degree)
@@ -74,20 +69,14 @@ print(gt_samples.W)
 plt.imshow(gt_samples.W)
 plt.savefig(join(logdir, 'gt_w.png'))
 
-
-if opt.off_wandb is False:
-    if opt.offline_wandb is True: os.system('wandb offline')
-    else:   os.system('wandb online')    
+if opt.off_wandb is False: 
     wandb.init(project = opt.wandb_project, 
                 entity = opt.wandb_entity, 
                 config = vars(opt), 
                 settings = wandb.Settings(start_method="fork"))
     wandb.run.name = logdir.split('/')[-1]
     wandb.run.save()
-    wandb.log({
-        "graph_structure(GT-pred)/Ground truth W": wandb.Image(join(logdir, 'gt_w.png')),
-        # "graph_structure(GT-pred)/GT interventional samples": wandb.Image(f'{opt.baseroot}/scratch/test_gt_image_learnP{opt.learn_P}_seed{opt.data_seed}_d{d}_ee_{int(opt.exp_edges)}.png'),
-    }, step=0)
+
 
 
 @jit
@@ -107,6 +96,7 @@ def calc_neg_elbo(params, rng_key, batch_interventions, gt_x_data):
         rng_key, 
         hard, 
         rng_key, 
+        opt.posterior_samples,
         opt, 
         batch_interventions, 
         params.LΣ, 
@@ -117,7 +107,9 @@ def calc_neg_elbo(params, rng_key, batch_interventions, gt_x_data):
     vmapped_nll_gaussian = vmap(utils.nll_gaussian, (None, 0, None), 0)
     nll = vmapped_nll_gaussian(gt_x_data/255., pred_samples.x/255., opt.pred_sigma)
 
-    LΣ_prior_logprobs = jnp.sum(LΣ_prior_dist.log_prob(LΣ_samples)[:, :l_dim], axis=1)
+    L_prior_logprobs = jnp.sum(LΣ_prior_dist.log_prob(LΣ_samples)[:, :l_dim], axis=1)
+    Σ_prior_logprobs = jnp.sum(LΣ_samples[:, l_dim:] ** 2 / (2 * opt.s_prior_std ** 2), axis=-1)
+    LΣ_prior_logprobs = L_prior_logprobs + Σ_prior_logprobs
     KL_term_LΣ = LΣ_posterior_logprobs - LΣ_prior_logprobs
     
     if opt.learn_P:
@@ -209,6 +201,7 @@ def evaluate_random_batch(rng_key, params, gt_samples, interventions):
         rng_key, 
         hard,
         rng_key, 
+        opt.posterior_samples,
         opt, 
         random_batch_interventions, 
         params.LΣ, 
@@ -297,54 +290,60 @@ with tqdm(range(opt.num_steps)) as pbar:
         )
         pbar.set_postfix(postfix_dict)
 
-# (   test_interv_data, 
-#     test_interv_nodes, 
-#     test_interv_values, 
-#     test_images,
-#     padded_test_images      ) = generate_test_samples(d, 
-#                                                         onp.array(gt_W), 
-#                                                         opt.sem_type, 
-#                                                         [opt.noise_sigma], 
-#                                                         low, high, 
-#                                                         num_test_samples,
-#                                                         opt.min_interv_value,
-#                                                         opt.max_interv_value)
-# plt.imsave(f'{opt.baseroot}/scratch/test_gt_image_learnP{opt.learn_P}_seed{opt.data_seed}_d{d}_ee_{int(opt.exp_edges)}.png', padded_test_images)
 
-# (   
-#     pred_X,
-#     _,
-#     _,
-#     z_samples,
-#     full_l_batch, 
-#     full_log_prob_l,
-#     L_samples, 
-#     W_samples, 
-#     log_noise_std_samples
-#                             ) = forward.apply(model_params, 
-#                                                 rng_key, 
-#                                                 hard, 
-#                                                 proj_dims,
-#                                                 rng_key, 
-#                                                 opt, 
-#                                                 test_interv_nodes, 
-#                                                 test_interv_values, 
-#                                                 LΣ_params, 
-#                                                 P=gt_samples.P)
-# pred_image = jnp.mean(pred_X, axis=0)
-# _, h, w, c = pred_image.shape
-# padded_pred_images = onp.zeros((h, 5, c))
-# for i in range(num_test_samples):
-#     padded_pred_images = onp.concatenate((padded_pred_images, pred_image[i]), axis=1)
-#     padded_pred_images = onp.concatenate((padded_pred_images, onp.zeros((h, 5, c))), axis=1)
+pad_len = 20
 
-# padded_pred_images = padded_pred_images[:, :, 0]
-# plt.imsave(f'{opt.baseroot}/scratch/test_pred_image_learnP{opt.learn_P}_seed{opt.data_seed}_d{d}_ee_{int(opt.exp_edges)}_sets{opt.n_interv_sets}_pts{opt.pts_per_interv}.png', padded_pred_images)
-# print(test_interv_nodes)
-# print(test_interv_values)
-# print(test_interv_data)
 
-# # if opt.off_wandb is False:
-# #     wandb.log({
-# #         "graph_structure(GT-pred)/predicted interventional samples": wandb.Image(f'{opt.baseroot}/scratch/test_pred_image_learnP{opt.learn_P}_seed{opt.data_seed}_d{d}_ee_{int(opt.exp_edges)}_sets{opt.n_interv_sets}_pts{opt.pts_per_interv}.png'),
-# #     }, step=0)
+# Generate test samples
+test_interv_z, test_interventions, gt_test_images = generate_test_samples(
+    rng_key,
+    gt_samples.W, 
+    scm_noise_sigmas=gt_samples.sigmas, 
+    interv_noise_dist_sigma=opt.interv_noise_dist_sigma,
+    use_interv_noise=not opt.no_interv_noise,
+    decoder_sigma=opt.decoder_sigma,
+    clamp_low=opt.clamp_low, 
+    clamp_high=opt.clamp_high,
+    pad_len=pad_len
+)
+
+
+pred_samples, _, _, _, _, = forward.apply(
+    params.model, 
+    rng_key, 
+    hard, 
+    rng_key, 
+    2000,
+    opt, 
+    test_interventions, 
+    params.LΣ, 
+    P=gt_samples.P
+)
+
+
+def get_padded_images(images):
+    padded_images = jnp.zeros((h, pad_len, c))
+    for i in range(d):
+        image = images[i]
+        padded_images = jnp.concatenate((padded_images, image, jnp.zeros((h, pad_len, c))), axis=1)
+    return padded_images[:, :, 0]
+
+_, h, w, c = pred_samples.x[0].shape
+padded_pred_images = get_padded_images(pred_samples.x[0])
+
+padded_posterior_samples = vmap(get_padded_images, (0), (0))(pred_samples.x) # (posterior_samples, padded_h, padded_w)
+sample_difference = onp.mean(onp.abs(gt_test_images[None, :, :] - padded_posterior_samples), axis=0)
+test_gt_image_path = f'{folder_path}/gt_test_images.png'
+test_pred_image_path = f'{folder_path}/pred_test_images.png'
+difference_image_path = f'{folder_path}/difference_images.png'
+
+plt.imsave(test_gt_image_path, gt_test_images, cmap='Purples')
+plt.imsave(test_pred_image_path, padded_pred_images, cmap='Purples')
+plt.imsave(difference_image_path, sample_difference, cmap='Purples')
+
+if opt.off_wandb is False:
+    wandb.log({
+        "graph_structure(GT-pred)/Ground truth W": wandb.Image(join(logdir, 'gt_w.png')),
+        "OOD Generalization/GT interv. images": wandb.Image(test_gt_image_path),
+        "OOD Generalization/Pred interv. images": wandb.Image(test_pred_image_path),
+    }, step=opt.num_steps+1)

@@ -2,7 +2,7 @@
 exp_id=$1
 data_config=${2:-'er1-ws_datagen_fix_noise_interv_noise-3_layer_mlpproj-d005-D0100-single-n_pairs2000-sets20-zerosinterv'}
 
-def_time='9:00:00'
+def_time='2:00:00'
 time=${3:-$def_time}
 
 
@@ -36,4 +36,8 @@ then
 elif [ ${exp_id} == '8' ]
 then
     bash script_runners/weakly_sup_biols_vector_job_run.sh ${dataset} 'BIOLS' ${time} ${config}
+
+elif [ ${exp_id} == '9' ]
+then
+    bash script_runners/graphvae_image_baseline_job_run.sh ${data_config} ${time} 
 fi

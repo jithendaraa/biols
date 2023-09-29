@@ -1,3 +1,4 @@
+# python create_datasets.py --config create_dataset d5 chemdata_proj default_datagen_no_interv_noise_fix_noise gaussian_intervs er1 multi_interv --n_pairs 2000 --n_interv_sets 20 --data_seed 0
 import sys
 sys.path.append('CausalMBRL')
 sys.path.append('CausalMBRL/envs')
@@ -94,12 +95,19 @@ artifact_metadata = {
     'decoder_sigma': opt.decoder_sigma,
     'sem_type': opt.sem_type,
     'fix_noise': opt.fix_noise,
-    'no_interv_noise': opt.no_interv_noise
+    'no_interv_noise': opt.no_interv_noise,
+    'decoder_noise': opt.decoder_noise
 }
 
 if opt.interv_value_sampling == 'uniform':
     artifact_metadata['min_interv_value'] = opt.min_interv_value
     artifact_metadata['max_interv_value'] = opt.max_interv_value
+
+elif opt.interv_value_sampling == 'gaussian':
+    artifact_metadata['interv_value_dist_sigma'] = opt.interv_value_dist_sigma
+
+if opt.no_interv_noise is False:
+    artifact_metadata['interv_noise_dist_sigma'] = opt.interv_noise_dist_sigma
 
 # TODO: To remove this, foldername has to be changed to image-{foldername}
 assert opt.dataset in ['vector', 'chemdata']
@@ -114,7 +122,10 @@ if opt.graph_type == 'erdos-renyi':
     if opt.datagen_type == 'weakly_supervised':
         folder_name = f'er{int(opt.exp_edges)}-ws_datagen_{fix_noise_str}_{interv_noise_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
     elif opt.datagen_type == 'default':
-        folder_name = f'er{int(opt.exp_edges)}-def_datagen_{fix_noise_str}_{interv_noise_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
+        if opt.decoder_noise:
+            folder_name = f'er{int(opt.exp_edges)}-def_datagen_decoder_noise-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
+        else:
+            folder_name = f'er{int(opt.exp_edges)}-def_datagen_no_decoder_noise-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
     else:
         raise NotImplementedError
 
@@ -132,12 +143,15 @@ scm = SyntheticDatagen(
     proj_dims=opt.proj_dims,
     projection=opt.proj,
     decoder_sigma=opt.decoder_sigma,
+    use_decoder_noise=opt.decoder_noise,
     interv_value_sampling=opt.interv_value_sampling,
     datagen_type=opt.datagen_type,
     sem_type=opt.sem_type,
     graph_type=opt.graph_type,
     dataset_type='linear',
     min_interv_value=opt.min_interv_value,
+    interv_noise_dist_sigma=opt.interv_noise_dist_sigma,
+    interv_value_dist_sigma=opt.interv_value_dist_sigma,
 )
 
 reqd_shape = (opt.n_pairs, opt.num_nodes)

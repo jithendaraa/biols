@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=4
 
 seeds=(0 1 2 3 4)
-lr=0.0001
+lr=0.0008
 off_wandb='False'
 
 biols_data_folder=$1
@@ -20,12 +20,12 @@ conda activate biols
 echo `date` "Python starting"
 cd exps
 
-if [ "$learn_P" = "False" ] 
+if [ "$learn_P" = "False" ]
 then
     echo "python biols_vector_data.py --config defaults biols_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
     python biols_vector_data.py --config defaults biols_learn_L --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}
 
-elif [ "$learn_P" = "True" ]  
+elif [ "$learn_P" = "True" ]
 then
     echo "python biols_vector_data.py --config defaults biols_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}"
     python biols_vector_data.py --config defaults biols_learn_P --biols_data_folder ${biols_data_folder} --data_seed ${seed} --lr ${lr} --off_wandb ${off_wandb}

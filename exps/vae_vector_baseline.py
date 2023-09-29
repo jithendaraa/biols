@@ -43,7 +43,7 @@ l_dim = opt.num_nodes * (opt.num_nodes - 1) // 2
 pred_sigma = opt.pred_sigma
 
 # Load saved data
-gt_samples, interventions = utils.read_biols_dataset(folder_path)
+gt_samples, interventions = utils.read_biols_dataset(folder_path, opt.obs_data)
 gt_W = onp.load(f'{folder_path}/weighted_adjacency.npy')
 gt_P = onp.load(f'{folder_path}/perm.npy')
 gt_L = onp.load(f'{folder_path}/edge_weights.npy')

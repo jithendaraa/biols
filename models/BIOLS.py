@@ -18,7 +18,7 @@ PredSamples = namedtuple('PredSamples', ['W', 'P', 'L', 'z', 'x'])
 class BIOLS(hk.Module):
     def __init__(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, 
                 proj_dims, interv_value_sampling, no_interv_noise, log_stds_max=5.0, 
-                logit_constraint=10, P=None, pred_sigma=1.0):
+                logit_constraint=10, P=None, pred_sigma=1.0, interv_noise_dist_sigma=0.1):
         """
             The BIOLS model to estimate SCM from vector data
         """
@@ -50,15 +50,16 @@ class BIOLS(hk.Module):
 
         self.ds = GumbelSinkhorn(self.d, noise_type="gumbel", tol=max_deviation)
         means = jnp.zeros((d,))
-        self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * 0.5)
+        self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * interv_noise_dist_sigma)
+
         self.decoder = hk.Sequential([
-                hk.Flatten(), 
-                hk.Linear(16, with_bias=False), jax.nn.gelu,
-                hk.Linear(64, with_bias=False), jax.nn.gelu,
-                hk.Linear(64, with_bias=False), jax.nn.gelu,
-                hk.Linear(64, with_bias=False), jax.nn.gelu,
-                hk.Linear(proj_dims, with_bias=False)
-            ])
+            hk.Flatten(), 
+            hk.Linear(16, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(64, with_bias=False), jax.nn.gelu,
+            hk.Linear(proj_dims, with_bias=False)
+        ])
         
 
     def _set_vars(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, no_interv_noise, 
@@ -280,7 +281,6 @@ class BIOLS(hk.Module):
         for j in swapped_ordering:
             mean = sample[:-1] @ W[:, j]
             sample = sample.at[j].set(mean + noise_terms[j])
-            sample = sample.at[interv_target].set(interv_values[interv_target])
             sample = sample.at[interv_target].set(interv_values[interv_target] + interv_noise[interv_target])
         
         return sample[:-1]
@@ -420,5 +420,11 @@ class BIOLS(hk.Module):
         Mu_X = vmap(self.decoder, (0), (0))(batched_qz_samples) # (posterior_samples, n, proj_dims)
         pred_X = Mu_X + jnp.multiply(self.pred_sigma, random.normal(rng_key, shape=(Mu_X.shape)))
 
-        pred_samples = PredSamples(W_samples, P_samples, L_samples, batched_qz_samples, pred_X)
+        pred_samples = PredSamples(
+            W=W_samples, 
+            P=P_samples, 
+            L=L_samples, 
+            z=batched_qz_samples, 
+            x=pred_X
+        )
         return (pred_samples, batched_P_logits, LΣ_samples, LΣ_posterior_logprobs, log_noise_std_samples)

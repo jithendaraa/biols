@@ -19,42 +19,44 @@ Optimizers = namedtuple('Optimizers', ['LΣ', 'model'])
 OptimizerState = namedtuple('OptimizerState', ['LΣ', 'model'])
 
 
-def forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
+def forward_fn(hard, rng_key, num_posterior_samples, opt, interventions, LΣ_params, P=None):
     model = BIOLS(
-        opt.num_nodes, 
-        opt.posterior_samples, 
-        opt.fixed_tau,
-        opt.hidden_size,
-        opt.max_deviation,
-        opt.learn_P,
-        opt.proj_dims, 
-        opt.interv_value_sampling,
-        opt.no_interv_noise,
-        log_stds_max=opt.log_stds_max,
-        logit_constraint=opt.logit_constraint,
-        P=P,
-        pred_sigma=opt.pred_sigma
-    )
-
-    return model(rng_key, interventions.labels, interventions.values, LΣ_params, hard)
-
-
-def image_forward_fn(hard, rng_key, opt, interventions, LΣ_params, P=None):
-    proj_dims = (1, int(opt.proj_dims ** 0.5), int(opt.proj_dims ** 0.5))
-    model = BIOLS_Image(
-        opt.num_nodes,
-        opt.posterior_samples,
-        proj_dims,
-        opt.fixed_tau,
-        opt.hidden_size,
-        opt.learn_P,
+        d=opt.num_nodes, 
+        tau=opt.fixed_tau,
+        hidden_size=opt.hidden_size,
+        max_deviation=opt.max_deviation,
+        learn_P=opt.learn_P,
+        proj_dims=opt.proj_dims, 
+        interv_value_sampling=opt.interv_value_sampling,
+        no_interv_noise=opt.no_interv_noise,
         log_stds_max=opt.log_stds_max,
         logit_constraint=opt.logit_constraint,
         P=P,
         pred_sigma=opt.pred_sigma,
+        interv_noise_dist_sigma=opt.interv_noise_dist_sigma
     )
 
-    return model(rng_key, interventions.labels, interventions.values, LΣ_params, hard)
+    return model(rng_key, num_posterior_samples, interventions.labels, interventions.values, LΣ_params, hard)
+
+
+def image_forward_fn(hard, rng_key, num_posterior_samples, opt, interventions, LΣ_params, P=None):
+    proj_dims = (1, int(opt.proj_dims ** 0.5), int(opt.proj_dims ** 0.5))
+    model = BIOLS_Image(
+        opt.num_nodes,
+        proj_dims,
+        opt.fixed_tau,
+        opt.hidden_size,
+        opt.learn_P,
+        interv_value_sampling=opt.interv_value_sampling,
+        no_interv_noise=opt.no_interv_noise,
+        log_stds_max=opt.log_stds_max,
+        logit_constraint=opt.logit_constraint,
+        P=P,
+        pred_sigma=opt.pred_sigma,
+        interv_noise_dist_sigma=opt.interv_noise_dist_sigma
+    )
+
+    return model(rng_key, num_posterior_samples, interventions.labels, interventions.values, LΣ_params, hard)
 
 
 def init_model(key, rng_key, opt, interventions, l_dim, noise_dim, P=None, image=False):
@@ -73,7 +75,7 @@ def init_model(key, rng_key, opt, interventions, l_dim, noise_dim, P=None, image
     opt_LΣ = optax.chain(*LΣ_layers)
     
     LΣ_params = jnp.concatenate((jnp.zeros(l_dim), jnp.zeros(noise_dim), jnp.zeros(l_dim + noise_dim) - 1)).astype(jnp.float32)
-    model_params = forward.init(next(key), False, rng_key, opt, interventions, LΣ_params, P)
+    model_params = forward.init(next(key), False, rng_key, opt.posterior_samples, opt, interventions, LΣ_params, P)
 
     model_opt_state = opt_model.init(model_params)
     LΣ_opt_state = opt_LΣ.init(LΣ_params)

@@ -13,6 +13,9 @@ create_dataset:
   edge_threshold: 0.3
   clamp_low: -8.
   clamp_high: 8.
+  decoder_noise: True
+  interv_noise_dist_sigma: 0.1
+  interv_value_dist_sigma: 2.
 
 d5:
   num_nodes: 5
@@ -39,8 +42,8 @@ son_d5:
 son_d10:
   num_nodes: 10
   proj_dims: 10
-  n_pairs: 4000
-  n_interv_sets: 40
+  n_pairs: 2000
+  n_interv_sets: 20
   pts_per_interv: 100
   proj: 'SON'
 
@@ -54,34 +57,49 @@ chemdata_proj:
   proj: 'chemdata'
   proj_dims: 2500
   dataset: 'chemdata'
+  interv_value_dist_sigma: 1.
+  decoder_sigma: 0.05
+  decoder_noise: True
 
-default_datagen_no_interv_noise_no_fix_noise:
+default_datagen_decoder_noise:
   datagen_type: 'default'
   no_interv_noise: True
   fix_noise: False
+  decoder_noise: True
+
+default_datagen_no_decoder_noise:
+  datagen_type: 'default'
+  no_interv_noise: True
+  fix_noise: False
+  decoder_noise: False
+
 
 # Exactly intervention value; noise for z1 and z2 is same
 ws_datagen_no_interv_noise_fix_noise:
   datagen_type: 'weakly_supervised'
   no_interv_noise: True
   fix_noise: True
+  decoder_noise: True
 
 ws_datagen_no_interv_noise_nofix_noise:
   datagen_type: 'weakly_supervised'
   no_interv_noise: True
   fix_noise: False
+  decoder_noise: True
 
 # Intervention value + noise; noise for z1 and z2 is same
 ws_datagen_interv_noise_fix_noise:
   datagen_type: 'weakly_supervised'
   no_interv_noise: False
   fix_noise: True
+  decoder_noise: True
 
 # Intervention value + noise; noise for z1 and z2 is not same
 ws_datagen_interv_noise_nofix_noise:
   datagen_type: 'weakly_supervised'
   no_interv_noise: False
   fix_noise: False
+  decoder_noise: True
 
 er1: 
   exp_edges: 1.0
@@ -106,4 +124,7 @@ zero_intervs:
 
 gaussian_intervs:
   interv_value_sampling: 'gaussian'
+
+uniform_intervs:
+  interv_value_sampling: 'uniform'
 

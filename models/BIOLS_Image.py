@@ -12,12 +12,24 @@ from tensorflow_probability.substrates.jax.distributions import Normal
 PredSamples = namedtuple('PredSamples', ['z', 'x', 'P', 'L', 'W'])
 
 class BIOLS_Image(hk.Module):
-    def __init__(self, d, posterior_samples, proj_dims, tau, hidden_size, learn_P, 
-        log_stds_max=10.0, logit_constraint=10, P=None, pred_sigma=1.0):
+    def __init__(self, d, proj_dims, tau, hidden_size, learn_P, 
+        interv_value_sampling, no_interv_noise, log_stds_max=10.0, logit_constraint=10, 
+        P=None, pred_sigma=1.0, interv_noise_dist_sigma=0.1):
 
         super().__init__()
-        self._set_vars(d, posterior_samples, proj_dims, tau, hidden_size, learn_P, 
-                        log_stds_max, logit_constraint, P, pred_sigma)
+        self._set_vars(
+            d,
+            proj_dims, 
+            tau, 
+            hidden_size, 
+            learn_P, 
+            interv_value_sampling,
+            no_interv_noise,
+            log_stds_max, 
+            logit_constraint, 
+            P, 
+            pred_sigma
+        )
 
         self.decoder = hk.Sequential([
                 hk.Linear(16), jax.nn.gelu,
@@ -26,19 +38,26 @@ class BIOLS_Image(hk.Module):
                 hk.Linear(512), jax.nn.gelu,
                 hk.Linear(2500), jax.nn.sigmoid
             ])
+        means = jnp.zeros((d,))
+        self.interv_noise_dist = Normal(
+            loc=means, 
+            scale=jnp.ones_like(means) * interv_noise_dist_sigma
+        )
         
-    def _set_vars(self, d, posterior_samples, proj_dims, tau, hidden_size, 
-        learn_P, log_stds_max, logit_constraint, P=None, pred_sigma=1.0):
+    def _set_vars(self, d, proj_dims, tau, hidden_size, learn_P, 
+        interv_value_sampling, no_interv_noise, log_stds_max, logit_constraint, 
+        P=None, pred_sigma=1.0):
         """
             Sets important variables/attributes for this class.
         """
         self.d = d
         self.l_dim = d * (d - 1) // 2
-        self.posterior_samples = posterior_samples
         self.proj_dims = proj_dims
         self.tau = tau
         self.hidden_size = hidden_size
         self.learn_P = learn_P
+        self.interv_value_sampling = interv_value_sampling
+        self.no_interv_noise = no_interv_noise
         self.log_stds_max = log_stds_max
         self.logit_constraint = logit_constraint
         self.P = P
@@ -80,7 +99,7 @@ class BIOLS_Image(hk.Module):
         W = (P @ L @ P.T).T
         return W
 
-    def sample_L_and_Σ(self, rng_key, LΣ_params):
+    def sample_L_and_Σ(self, rng_key, num_samples, LΣ_params):
         """
             Performs sampling (L, Σ) ~ q_ϕ(L, Σ) 
                 where q_ϕ is a Normal
@@ -114,7 +133,7 @@ class BIOLS_Image(hk.Module):
         
         # Sample (L, Σ) from the Normal
         l_distribution = Normal(loc=means, scale=jnp.exp(log_stds))
-        full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(self.posterior_samples,))
+        full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(num_samples,))
         full_l_batch = cast(jnp.ndarray, full_l_batch)
 
         # log likelihood for q_ϕ(L, Σ)
@@ -170,7 +189,7 @@ class BIOLS_Image(hk.Module):
                 batched_P_logits: jnp.ndarray (batch_size, d, d)
                     Logits for sampling each permutation P_i
         """
-
+        num_samples = full_l_batch.shape[0]
         if self.learn_P:
             # Compute logits T = MLP_{ϕ(T)}(L, Σ) for sampling from q_{ϕ}(P | L, Σ)
             batched_P_logits = self.get_P_logits(full_l_batch)
@@ -184,7 +203,7 @@ class BIOLS_Image(hk.Module):
 
         elif self.learn_P is False:
             # if not learning P, use GT value
-            batched_P = self.P[jnp.newaxis, :].repeat(self.posterior_samples, axis=0) 
+            batched_P = self.P[jnp.newaxis, :].repeat(num_samples, axis=0) 
             batched_P_logits = None
 
         return batched_P, batched_P_logits
@@ -230,12 +249,19 @@ class BIOLS_Image(hk.Module):
         
         # Getting exogenous noise vector \epsilon = {\epsilon_1, ... \epsilon_d}, from eps_std
         noise_terms = jnp.multiply(eps_std, random.normal(rng_key, shape=(self.d,)))
+        rng_key, _ = random.split(rng_key, 2)
+
+        if self.no_interv_noise is False:
+            interv_noise = self.interv_noise_dist.sample(seed=rng_key, sample_shape=(1,)) # (d, )
+            interv_noise = jnp.concatenate((interv_noise[0], jnp.zeros((1,))), axis=0)
+        else:
+            interv_noise = jnp.zeros_like(interv_values)
 
         # Traverse node topologically and ancestral sample
         for j in swapped_ordering:
             mean = sample[:-1] @ W[:, j]
             sample = sample.at[j].set(mean + noise_terms[j])
-            sample = sample.at[interv_target].set(interv_values[interv_target]) 
+            sample = sample.at[interv_target].set(interv_values[interv_target] + interv_noise[interv_target])
 
         return sample[:-1]
 
@@ -281,7 +307,7 @@ class BIOLS_Image(hk.Module):
         samples = vmap(self.eltwise_ancestral_sample, (None, None, None, 0, 0, 0), (0))(W, P, eps_std, rng_keys, interv_targets, interv_values)
         return samples
 
-    def __call__(self, rng_key, interv_targets, interv_values, LΣ_params, hard):
+    def __call__(self, rng_key, num_samples, interv_targets, interv_values, LΣ_params, hard):
         """
             Forward pass of BIOLS:
                 1. Draw (L_i, Σ_i) ~ q_ϕ(L, Σ) 
@@ -349,7 +375,7 @@ class BIOLS_Image(hk.Module):
         h_, w_ = self.proj_dims[-2] // 2, self.proj_dims[-1] // 2  
         
         # Draw (L, Σ) ~ q_ϕ(L, Σ) 
-        LΣ_samples, full_log_prob_l = self.sample_L_and_Σ(rng_key, LΣ_params)
+        LΣ_samples, full_log_prob_l = self.sample_L_and_Σ(rng_key, num_samples, LΣ_params)
         log_noise_std_samples = LΣ_samples[:, -self.noise_dim:]  # (posterior_samples, 1)
         L_samples = vmap(self.lower, in_axes=(0))(LΣ_samples[:,  :self.l_dim]) # (posterior_samples, d, d)
 
@@ -358,7 +384,7 @@ class BIOLS_Image(hk.Module):
 
         # W = (PLP.T).T for every posterior sample of (P, L) 
         W_samples = vmap(self.sample_W, (0, 0), (0))(L_samples, P_samples)  # (posterior_samples, d, d)
-        rng_keys = rnd.split(rng_key, self.posterior_samples)
+        rng_keys = rnd.split(rng_key, num_samples)
 
         # z ~ q(Z | P, L, Σ)
         vmapped_ancestral_sample = vmap(self.ancestral_sample, (0, 0, 0, 0, None, None), (0))
@@ -374,7 +400,7 @@ class BIOLS_Image(hk.Module):
         # Stochastic decoder -> causal variables z to predict images
         Mu_X = self.decoder(batched_qz_samples)
         pred_X = Mu_X + jnp.multiply(self.pred_sigma, random.normal(rng_key, shape=(Mu_X.shape)))
-        pred_X = pred_X.reshape(self.posterior_samples, 
+        pred_X = pred_X.reshape(num_samples, 
                                     len(interv_targets), 
                                     self.proj_dims[-2], 
                                     self.proj_dims[-1], 

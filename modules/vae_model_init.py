@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../models')
 
-import optax
+import optax, pdb
 import haiku as hk
 import numpy as onp
 from scipy.optimize import linear_sum_assignment
@@ -13,15 +13,30 @@ from VAE import VAE
 get_mse = lambda recon, x: jnp.mean(jnp.square(recon - x)) 
 
 def numerical_vae_forward_fn(rng_key, d, X, corr):
-    proj_dims = X.shape[-1]
+    if len(X.shape) == 4:
+        proj_dims = X.shape[-2] * X.shape[-3]
+    else:
+        proj_dims = X.shape[-1]
     model = VAE(d, proj_dims, corr, sigmoid=False)
     return model(rng_key, X, corr)
 
 def init_vector_vae_params(opt, key, rng_key, x_data):
-    forward = hk.transform(numerical_vae_forward_fn)
     model_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
+    forward = hk.transform(numerical_vae_forward_fn)
     params = forward.init(next(key), rng_key, opt.num_nodes, x_data, opt.corr)
     optimizer = optax.chain(*model_layers)
+    opt_state = optimizer.init(params)
+    return forward, params, optimizer, opt_state
+
+def image_vae_forward_fn(rng_key, proj_dims, d, X, corr):
+    model = VAE(d, proj_dims, corr, sigmoid=False)
+    return model(rng_key, X, corr)
+
+def init_image_vae_params(opt, proj_dims, key, rng_key, x_data):
+    model_layers = [optax.scale_by_belief(eps=1e-8), optax.scale(-opt.lr)]
+    optimizer = optax.chain(*model_layers)
+    forward = hk.transform(image_vae_forward_fn)
+    params = forward.init(next(key), rng_key, proj_dims, opt.num_nodes, x_data, opt.corr)
     opt_state = optimizer.init(params)
     return forward, params, optimizer, opt_state
 

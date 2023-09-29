@@ -14,7 +14,6 @@ defaults:
   bethe_iters: 20
   learn_L: True
   dataset: 'vector'
-  learn_Z: True
   learn_intervs: False
   datagen_type: 'weakly_supervised'
   interv_value_sampling: 'zeros'
@@ -29,6 +28,7 @@ defaults:
   learn_P: False
   pred_sigma: 0.1
   batch_size: 10000
+  interv_noise_dist_sigma: 0.1
 
   # ! Dont change this or remove
   clamp_low: -8.
@@ -42,30 +42,49 @@ biols_learn_L:
   exp_name: 'BIOLS_learnL'
   num_steps: 10000
   learn_P: False
+  pred_sigma: 0.1
+  lr: 0.0001
+
 
 biols_image_learn_L:
   exp_name: 'BIOLS_Image_learnL'
   num_steps: 1000
   learn_P: False
   batch_size: 256
-  lr: 0.001
+  lr: 0.0004
+  pred_sigma: 0.05
+  generate: True
+  posterior_samples: 128
+  
+
 
 biols_learn_P:
   exp_name: 'BIOLS_learnSCM'
   num_steps: 20000
   learn_P: True
+  lr: 0.0008
+  pred_sigma: 0.1
+
 
 biols_image_learn_P:
   exp_name: 'BIOLS_Image_learnL'
   num_steps: 20000
   learn_P: True
-  lr: 0.0008
+  lr: 0.0001
+  pred_sigma: 0.1
 
 vae_linear_baseline:
   exp_name: 'VAE baseline'
   data_seed: 0
   num_steps: 10000
   corr: True
+
+vae_chemdata:
+  exp_name: 'VAE baseline'
+  data_seed: 0
+  num_steps: 10000
+  corr: True
+  batch_size: 64
 
 graphvae_vector_baseline:
   exp_name: 'GraphVAE (vector)'

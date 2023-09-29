@@ -18,7 +18,6 @@ import jax
 from jax import jit, vmap, value_and_grad, config
 import haiku as hk
 from tensorflow_probability.substrates.jax.distributions import Horseshoe
-from jax.tree_util import tree_map
 from jax.flatten_util import ravel_pytree
 
 from modules.biols_model_init import init_model, Parameters, OptimizerState
@@ -52,9 +51,6 @@ print(f"Learning permutation: {opt.learn_P}")
 
 # Load saved data
 gt_samples, interventions = utils.read_biols_dataset(folder_path, opt.obs_data)
-gt_W = onp.load(f'{folder_path}/weighted_adjacency.npy')
-gt_P = onp.load(f'{folder_path}/perm.npy')
-gt_L = onp.load(f'{folder_path}/edge_weights.npy')
 print(gt_samples.W)
 
 LΣ_prior_dist = Horseshoe(scale=jnp.ones(l_dim + noise_dim) * horseshoe_tau)
@@ -86,20 +82,15 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     KL_term_LΣ, KL_term_P = 0., 0.
     log_P_posterior, log_P_prior = 0., 0.
 
-    (   
-        pred_samples,
-        batch_P_logits,
-        LΣ_samples,
-        LΣ_posterior_logprobs,
-        _
-                                ) = forward.apply(params.model, 
-                                                    rng_key, 
-                                                    hard, 
-                                                    rng_key, 
-                                                    opt, 
-                                                    interventions, 
-                                                    params.LΣ, 
-                                                    P=gt_P)
+    pred_samples, batch_P_logits, LΣ_samples, LΣ_posterior_logprobs, _= forward.apply(params.model, 
+        rng_key, 
+        hard, 
+        rng_key, 
+        opt, 
+        interventions, 
+        params.LΣ, 
+        P=gt_samples.P
+    )
     
     # - exp_{P, L, Σ} exp_{Z | P, L, Σ} log p(X | Z)
     vmapped_nll_gaussian = vmap(utils.nll_gaussian, (None, 0, None), 0)
@@ -122,7 +113,7 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
         LΣ_prior_logprobs=LΣ_prior_logprobs,
         L_prior_logprobs=L_prior_logprobs,
         Σ_prior_logprobs=Σ_prior_logprobs,
-        KL_term_LΣ=KL_term_LΣ,
+        KL_term_LΣ=KL_term_LΣ, 
         log_P_posterior=log_P_posterior,
         log_P_prior=log_P_prior,
         KL_term_P=KL_term_P, 
@@ -153,7 +144,7 @@ def gradient_step(rng_key, params, interventions, gt_samples):
     G_samples = jnp.where(jnp.abs(pred_samples.W) >= opt.edge_threshold, 1, 0) 
 
     log_dict = {
-        "L_mse": jnp.mean(vmap(utils.get_mse, (None, 0), 0)(gt_W, jnp.multiply(pred_samples.W, G_samples))),
+        "L_mse": jnp.mean(vmap(utils.get_mse, (None, 0), 0)(gt_samples.W, jnp.multiply(pred_samples.W, G_samples))),
         "z_mse": jnp.mean(vmap(utils.get_mse, (None, 0), 0)(gt_samples.z, pred_samples.z)),
         "x_mse": jnp.mean(vmap(utils.get_mse, (None, 0), 0)(gt_samples.x, pred_samples.x)),
         "KL(LΣ)": jnp.mean(losses.KL_term_LΣ),
@@ -186,7 +177,7 @@ forward, params, optimizers, opt_state  = init_model(
     interventions, 
     l_dim, 
     noise_dim, 
-    P=gt_P
+    P=gt_samples.P
 )
 
 # Training loop
@@ -237,10 +228,10 @@ with tqdm(range(opt.num_steps)) as pbar:
             tqdm.write(f" ")
 
         postfix_dict = OrderedDict(
-            L_mse=f"{log_dict['L_mse']:.3f}",
+            L_mse=f"{log_dict['L_mse']:.4f}",
             SHD=shd,
             AUROC=f"{eval_dict['auroc']:.2f}",
-            loss=f"{loss:.4f}",
+            loss=f"{loss:.3f}",
             KL_LΣ=f"{log_dict['KL(LΣ)']:.3f}",
             KL_P=f"{log_dict['KL(P)']:.3f}",
         )
