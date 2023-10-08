@@ -16,7 +16,7 @@ from modules.GumbelSinkhorn import GumbelSinkhorn
 PredSamples = namedtuple('PredSamples', ['W', 'P', 'L', 'z', 'x'])
 
 class BIOLS(hk.Module):
-    def __init__(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, 
+    def __init__(self, d, tau, hidden_size, max_deviation, learn_P, 
                 proj_dims, interv_value_sampling, no_interv_noise, log_stds_max=5.0, 
                 logit_constraint=10, P=None, pred_sigma=1.0, interv_noise_dist_sigma=0.1):
         """
@@ -25,8 +25,7 @@ class BIOLS(hk.Module):
         super().__init__()
         
         self._set_vars(
-            d, 
-            posterior_samples, 
+            d,  
             tau,
             hidden_size, 
             max_deviation, 
@@ -62,14 +61,13 @@ class BIOLS(hk.Module):
         ])
         
 
-    def _set_vars(self, d, posterior_samples, tau, hidden_size, max_deviation, learn_P, no_interv_noise, 
+    def _set_vars(self, d, tau, hidden_size, max_deviation, learn_P, no_interv_noise, 
                 log_stds_max, logit_constraint, proj_dims, interv_value_sampling, P=None, pred_sigma=1.):
         """
             Sets important variables/attributes for this class.
         """
         self.d = d
         self.l_dim = d * (d - 1) // 2
-        self.posterior_samples = posterior_samples
         self.tau = tau
         self.hidden_size = hidden_size
         self.max_deviation = max_deviation
@@ -118,7 +116,7 @@ class BIOLS(hk.Module):
         W = (P @ L @ P.T).T
         return W
 
-    def sample_L_and_Σ(self, rng_key, LΣ_params):
+    def sample_L_and_Σ(self, rng_key, num_posterior_samples, LΣ_params):
         """
             Performs sampling (L, Σ) ~ q_ϕ(L, Σ) 
                 where q_ϕ is a Normal
@@ -155,7 +153,7 @@ class BIOLS(hk.Module):
         
         # Sample (L, Σ) from the Normal
         l_distribution = Normal(loc=means, scale=jnp.exp(log_stds))
-        full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(self.posterior_samples,))
+        full_l_batch = l_distribution.sample(seed=rng_key, sample_shape=(num_posterior_samples,))
 
         # log prob for q_ϕ(L, Σ)
         LΣ_posterior_logprobs = jnp.sum(l_distribution.log_prob(full_l_batch), axis=1)  
@@ -179,7 +177,7 @@ class BIOLS(hk.Module):
             p_logits = jnp.tanh(p_logits / self.logit_constraint) * self.logit_constraint
         return p_logits.reshape((-1, self.d, self.d))
 
-    def get_P(self, rng_key, full_l_batch, hard):
+    def get_P(self, rng_key, num_posterior_samples, full_l_batch, hard):
         """
             Given batches of \hat{L} and \hat{Σ}, first calculate the logits 
             to sample permutation, then (soft or hard) sample permutation \hat{P} 
@@ -223,7 +221,7 @@ class BIOLS(hk.Module):
 
         elif self.learn_P is False:
             # if not learning P, use GT value
-            batched_P = self.P[jnp.newaxis, :].repeat(self.posterior_samples, axis=0) 
+            batched_P = self.P[jnp.newaxis, :].repeat(num_posterior_samples, axis=0) 
             batched_P_logits = None
 
         return batched_P, batched_P_logits
@@ -327,7 +325,7 @@ class BIOLS(hk.Module):
         samples = vmap(self.eltwise_ancestral_sample, (None, None, None, 0, 0, 0), (0))(W, P, eps_std, rng_keys, interv_targets, interv_values)
         return samples
 
-    def __call__(self, rng_key, interv_labels, interv_values, LΣ_params, hard):
+    def __call__(self, rng_key, num_posterior_samples, interv_labels, interv_values, LΣ_params, hard):
         """
             Forward pass of BIOLS:
                 1. Draw (L_i, Σ_i) ~ q_ϕ(L, Σ) 
@@ -393,16 +391,16 @@ class BIOLS(hk.Module):
                     Σ_i as diag(exp(2 * log sigma_i)) 
         """
         # Draw (L, Σ) ~ q_ϕ(L, Σ) 
-        LΣ_samples, LΣ_posterior_logprobs = self.sample_L_and_Σ(rng_key, LΣ_params)
+        LΣ_samples, LΣ_posterior_logprobs = self.sample_L_and_Σ(rng_key, num_posterior_samples, LΣ_params)
         log_noise_std_samples = LΣ_samples[:, -self.noise_dim:]  # (posterior_samples, 1)
         L_samples = vmap(self.lower, in_axes=(0))(LΣ_samples[:,  :self.l_dim]) # (posterior_samples, d, d)
 
         # Draw P ~ q_ϕ(P | L, Σ) if we are learning P, else use GT value
-        P_samples, batched_P_logits = self.get_P(rng_key, LΣ_samples, hard) # (posterior_samples, d, d) 
+        P_samples, batched_P_logits = self.get_P(rng_key, num_posterior_samples, LΣ_samples, hard) # (posterior_samples, d, d) 
 
         # W = (PLP.T).T for every posterior sample of (P, L) 
         W_samples = vmap(self.sample_W, (0, 0), (0))(L_samples, P_samples)  # (posterior_samples, d, d)
-        rng_keys = rnd.split(rng_key, self.posterior_samples)
+        rng_keys = rnd.split(rng_key, num_posterior_samples)
         
         # z ~ q(Z | P, L, Σ)
         vmapped_ancestral_sample = vmap(self.ancestral_sample, (0, 0, 0, 0, None, None), (0))

@@ -86,6 +86,7 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
         rng_key, 
         hard, 
         rng_key, 
+        opt.posterior_samples,
         opt, 
         interventions, 
         params.LΣ, 
