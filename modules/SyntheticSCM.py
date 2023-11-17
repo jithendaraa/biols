@@ -1,15 +1,18 @@
 import logging
 import numpy as np
 import networkx as nx
+import haiku as hk
+import jax
+import jax.numpy as jnp
 import pdb
 
 class SyntheticSCM(object):
     _logger = logging.getLogger(__name__)
 
-    def __init__(self, d, graph_type, degree, sem_type, sigmas,
-        dataset_type="linear", quadratic_scale=None, data_seed=0, identity_perm=False):
+    def __init__(self, d, graph_type, degree, sem_type, sigmas, dataset_type="linear", quadratic_scale=None, 
+        data_seed=0, identity_perm=False):
         """
-            SyntheticSCM class to instantiate a linear Gaussian additive 
+            SyntheticSCM class to instantiate a linear or nonlinear Gaussian additive 
             noise SCM that consists of:
                 (i) a fixed noise variance, 
                 (ii) DAG structure G, 
@@ -30,7 +33,9 @@ class SyntheticSCM(object):
         self.data_seed = data_seed
         self.sigmas = sigmas
         self.identity_perm = identity_perm
-    
+
+        self.nonlinear_scm_params = []
+
         self._setup()
         self._logger.debug("Finished setting up dataset class")
 
@@ -47,6 +52,46 @@ class SyntheticSCM(object):
         if self.dataset_type != "linear":
             assert self.W_2 is not None
             self.W_2 = self.W_2 * self.quadratic_scale
+        
+        if self.sem_type == 'nonlinear-gauss':
+            self.W = np.where(np.abs(self.W) >= self.w_range[0], 1, 0)
+            self.nonlinear_scm_layers = [self.init_nonlinear_scm_layer(i) for i in range(self.d)]
+            self._init_model_params()
+    
+    def init_nonlinear_scm_layer(self, layer_num):
+        @hk.transform
+        def nonlinear_scm_layer(rng_key, init_latents):
+            with hk.experimental.name_scope(f'MLP_{layer_num}'):
+                mean_log_std = hk.nets.MLP(
+                    [self.d] * 2,
+                    activation=jax.nn.leaky_relu,
+                    activate_final=True,
+                    name=f'nonlinear_scm_layer_{layer_num}'
+                )(init_latents)
+                mean_log_std = hk.Linear(
+                    2,
+                    w_init=hk.initializers.RandomNormal(),
+                    b_init=hk.initializers.RandomNormal()
+                )(mean_log_std)
+
+            mean, log_std = jnp.split(mean_log_std, 2, axis=-1)
+            std = jnp.exp(log_std)
+            samples = mean + std * jax.random.normal(rng_key, shape=mean.shape)
+            return samples
+
+        return nonlinear_scm_layer
+
+    def _init_model_params(self):
+        if self.sem_type == 'linear-gauss':
+            pass
+        elif self.sem_type == 'nonlinear-gauss':
+            for i in range(len(self.nonlinear_scm_layers)):
+                layer = self.nonlinear_scm_layers[i]
+                hk_key = hk.PRNGSequence(self.data_seed + i)
+                rng_key = jax.random.PRNGKey(self.data_seed + i)
+                params = layer.init(next(hk_key), rng_key, jnp.zeros((1, self.d)))
+                print(f"Init layer {i}")
+                self.nonlinear_scm_params.append(params)
 
     @staticmethod
     def simulate_random_dag(d, degree, graph_type, w_range, data_seed, return_w_2=False, identity_perm=False):
@@ -135,8 +180,8 @@ class SyntheticSCM(object):
 
         return X
 
-    def sample_z_given_noise(self, noise, W, sem_type, interv_targets=None, interv_noise=None, 
-        interv_values=None, edge_threshold=0.3):
+    def sample_z_given_noise(self, noise, W, sem_type, interv_targets=None, interv_noise=None, interv_values=None, 
+        edge_threshold=0.3):
         """
             TODO
         """
@@ -153,6 +198,7 @@ class SyntheticSCM(object):
 
         graph_structure = np.where(np.abs(W) < edge_threshold, 0, 1)
         W = np.multiply(W, graph_structure)
+        rng_key = jax.random.PRNGKey(self.data_seed)
 
         G = nx.DiGraph(W)
         n, d = noise.shape
@@ -161,15 +207,27 @@ class SyntheticSCM(object):
         assert len(ordered_vertices) == d
 
         for j in ordered_vertices:
-            Z[:, j] = (interv_values[:, j] + interv_noise[:, j]) * interv_targets[:, j].astype(int)
-            non_interventions_mask = 1.0 - interv_targets[:, j].astype(int)
+            Z[:, j] = (interv_values[:, j] + interv_noise[:, j]) * interv_targets[:, j].astype(int) 
             parents = list(G.predecessors(j))
             if sem_type == "linear-gauss":
-                eta = Z[:, parents].dot(W[parents, j])
-                Z[:, j] += (eta + noise[:, j]) * non_interventions_mask
-            
+                eta = Z[:, parents].dot(W[parents, j]) # (n, )
+            elif sem_type == 'nonlinear-gauss':
+                # For each sample, retain values of the parents of node j and zero out the rest
+                masked_z = jnp.multiply(Z, graph_structure[:, j][None, :]) # (n, d)
+
+                if len(parents) == 0:
+                    eta = jnp.zeros_like(noise[:, j])
+                else:
+                    nonlinear_scm_mlp_params = self.nonlinear_scm_params[j]
+                    nonlinear_scm_mlp = self.nonlinear_scm_layers[j]
+                    eta = nonlinear_scm_mlp.apply(nonlinear_scm_mlp_params, rng_key, rng_key, masked_z).squeeze() # (n, )
             else:
                 raise ValueError
+
+            # For unintervened nodes j, set their value as z_j = f(parents(z_j)) + noise
+            # Here, f can be linear or nonlinear
+            non_interventions_mask = 1.0 - interv_targets[:, j].astype(int)
+            Z[:, j] += (eta + noise[:, j]) * non_interventions_mask
         
         return Z
 

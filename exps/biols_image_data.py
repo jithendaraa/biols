@@ -280,7 +280,6 @@ with tqdm(range(opt.num_steps)) as pbar:
             tqdm.write(f"SHD: {eval_dict['shd']} | CPDAG SHD: {eval_dict['shd_c']} | AUROC: {eval_dict['auroc']}")
             tqdm.write(f" ")
         
-
         postfix_dict = OrderedDict(
             Epoch=i,
             L_mse=f"{epoch_dict['L_mse']:.5f}",

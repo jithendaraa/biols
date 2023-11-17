@@ -17,6 +17,12 @@ create_dataset:
   interv_noise_dist_sigma: 0.1
   interv_value_dist_sigma: 2.
 
+nonlinear_scm:
+  sem_type: 'nonlinear-gauss'
+
+linear_scm:
+  sem_type: 'linear-gauss'
+
 d5:
   num_nodes: 5
   proj_dims: 100
@@ -30,6 +36,57 @@ d10:
   n_interv_sets: 20
   pts_per_interv: 100
   n_pairs: 2000
+
+d15:
+  num_nodes: 15
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+d20:
+  num_nodes: 20
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+d25:
+  num_nodes: 25
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+
+d30:
+  num_nodes: 30
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+d40:
+  num_nodes: 40
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+d50:
+  num_nodes: 50
+  proj_dims: 100
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
+d1000:
+  num_nodes: 1000
+  proj_dims: 2000
+  n_interv_sets: 20
+  pts_per_interv: 100
+  n_pairs: 2000
+
 
 son_d5:
   num_nodes: 5

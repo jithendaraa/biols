@@ -96,7 +96,8 @@ artifact_metadata = {
     'sem_type': opt.sem_type,
     'fix_noise': opt.fix_noise,
     'no_interv_noise': opt.no_interv_noise,
-    'decoder_noise': opt.decoder_noise
+    'decoder_noise': opt.decoder_noise,
+    'interv_value_dist_sigma': opt.interv_value_dist_sigma
 }
 
 if opt.interv_value_sampling == 'uniform':
@@ -116,16 +117,17 @@ if opt.graph_type == 'erdos-renyi':
     zfilled_nodes = str(opt.num_nodes).zfill(3)
     zfilled_proj_dims = str(opt.proj_dims).zfill(4)
     
+    scm_str = '' if opt.sem_type == 'linear' else f'_nonlineargauss_SCM'
     fix_noise_str = 'fix_noise' if opt.fix_noise is True else 'nofix_noise'
     interv_noise_str = 'no_interv_noise' if opt.no_interv_noise is True else 'interv_noise'
 
     if opt.datagen_type == 'weakly_supervised':
-        folder_name = f'er{int(opt.exp_edges)}-ws_datagen_{fix_noise_str}_{interv_noise_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
+        folder_name = f'er{int(opt.exp_edges)}-ws_datagen_{fix_noise_str}_{interv_noise_str}{scm_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
     elif opt.datagen_type == 'default':
         if opt.decoder_noise:
-            folder_name = f'er{int(opt.exp_edges)}-def_datagen_decoder_noise-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
+            folder_name = f'er{int(opt.exp_edges)}-def_datagen_decoder_noise{scm_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
         else:
-            folder_name = f'er{int(opt.exp_edges)}-def_datagen_no_decoder_noise-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
+            folder_name = f'er{int(opt.exp_edges)}-def_datagen_no_decoder_noise{scm_str}-{opt.proj}proj-d{zfilled_nodes}-D{zfilled_proj_dims}-{opt.interv_type}-n_pairs{opt.n_pairs}-sets{opt.n_interv_sets}-{opt.interv_value_sampling}interv'
     else:
         raise NotImplementedError
 
@@ -177,9 +179,7 @@ if opt.datagen_type == 'weakly_supervised':
 
 
 elif opt.datagen_type == 'default':
-
     assert opt.fix_noise is False and opt.no_interv_noise is True
-
     x_samples, z_samples, labels, interv_targets, interv_values = scm.sample_default(
         rng_key, 
         num_obs_samples=opt.n_pairs, 

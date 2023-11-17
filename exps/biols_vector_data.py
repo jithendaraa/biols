@@ -104,7 +104,7 @@ def calc_neg_elbo(rng_key, params, interventions, gt_samples):
     
     if opt.learn_P:
         log_P_posterior = vmap(gumbel_sinkhorn.logprob, in_axes=(0, 0, None))(pred_samples.P, batch_P_logits.astype(jnp.float64), opt.bethe_iters)
-        log_P_prior = -jnp.sum(jnp.log(onp.arange(opt.num_nodes) + 1))
+        log_P_prior = -jnp.sum(jnp.log(jnp.arange(opt.num_nodes) + 1))
         KL_term_P = log_P_posterior - log_P_prior
 
     neg_elbo = jnp.mean(nll + KL_term_LΣ + KL_term_P)

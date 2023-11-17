@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --time=6:00:00
+#SBATCH --time=20:00:00
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:a100l:1
 #SBATCH --cpus-per-task=4
 
 seeds=(0 1 2 3 4)
-lr=0.0008
 off_wandb='False'
 
 biols_data_folder=$1
 learn_P=$2
+lr=$3
 seed=${seeds[ $((  (${SLURM_ARRAY_TASK_ID})  % ${#seeds[@]} )) ]}
 
 start=`date +%s`

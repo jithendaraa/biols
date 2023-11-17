@@ -2,17 +2,20 @@
 exp_id=$1
 data_config=${2:-'er1-ws_datagen_fix_noise_interv_noise-3_layer_mlpproj-d005-D0100-single-n_pairs2000-sets20-zerosinterv'}
 
-def_time='2:00:00'
-time=${3:-$def_time}
+def_lr=0.0008
+lr=${3:-$def_lr}
+
+def_time='24:00:00'
+time=${4:-$def_time}
 
 
 if [ ${exp_id} == '1' ]
 then
-    bash script_runners/biols_vector_job_run.sh ${data_config} ${time} 
+    bash script_runners/biols_vector_job_run.sh ${data_config} ${time} ${lr}
 
 elif [ ${exp_id} == '2' ]
 then
-    bash script_runners/batched_biols_vector_job_run.sh 'BIOLS' ${time} ${config}
+    bash script_runners/batched_biols_vector_job_run.sh ${data_config} ${time} ${lr}
 
 elif [ ${exp_id} == '3' ]
 then

@@ -64,7 +64,7 @@ class SyntheticDatagen(SyntheticSCM):
         )
 
         assert graph_type in ['erdos-renyi']
-        assert sem_type in ['linear-gauss']
+        assert sem_type in ['linear-gauss', 'nonlinear-gauss']
         assert interv_type in ['single', 'multi']
         assert projection in ['linear', '3_layer_mlp', 'SON', 'chemdata']
 
@@ -80,6 +80,7 @@ class SyntheticDatagen(SyntheticSCM):
         self.sigmas = jnp.exp(log_sigma_W) # std dev of the SCM noise variables
         means = jnp.zeros(num_nodes)
         self.noise_dist = Normal(loc=means, scale=self.sigmas)
+        self.edge_threshold = edge_threshold
         
         self.interv_noise_dist = Normal(loc=means, scale=jnp.ones_like(means) * interv_noise_dist_sigma)
         self.interv_value_dist_sigma = interv_value_dist_sigma
@@ -266,7 +267,6 @@ class SyntheticDatagen(SyntheticSCM):
         interv_nodes = self.get_interv_nodes(self.num_nodes, interv_targets)
         return x_samples, z_samples, interv_nodes, interv_targets, interv_values
 
-
     def sample_weakly_supervised_z(self, rng_key, n_pairs, num_interv_sets, fix_noise=True, no_interv_noise=False, clamp_low=-8., clamp_high=8.):
         """
             Sample weakly supervised data: pairs of z, z~
@@ -329,6 +329,7 @@ class SyntheticDatagen(SyntheticSCM):
             z1_noise,
             self.W,
             self.sem_type, 
+            edge_threshold=self.edge_threshold,
         )
 
         z2 = self.sample_z_given_noise(
@@ -337,7 +338,8 @@ class SyntheticDatagen(SyntheticSCM):
             self.sem_type,
             interv_targets=interv_targets_z2, 
             interv_noise=intervention_noise,
-            interv_values=interv_values
+            interv_values=interv_values,
+            edge_threshold=self.edge_threshold,
         )
 
         z1 = jnp.array(z1).reshape(n_pairs, self.num_nodes)
@@ -347,7 +349,6 @@ class SyntheticDatagen(SyntheticSCM):
             z1, z2 = jnp.clip(z1, clamp_low, clamp_high), jnp.clip(z2, clamp_low, clamp_high)
         
         return z1, z2, intervention_labels, interv_values, interv_targets_z2, intervention_noise
-
 
     def sample_weakly_supervised(self, rng_key, n_pairs, num_interv_sets, return_interv_values=False, fix_noise=True, no_interv_noise=False, return_interv_noise=False, clamp_low=-8., clamp_high=8.):
         """
@@ -373,8 +374,6 @@ class SyntheticDatagen(SyntheticSCM):
 
         if self.interv_type == 'multi':
             intervention_labels = self.get_interv_nodes(self.num_nodes, interv_targets_z2)
-        
-        assert jnp.allclose(jnp.isclose(z2, interv_values + intervention_noise), interv_targets_z2)
 
         return_items = [
             x1.astype(jnp.float32),
